@@ -32,7 +32,18 @@ Examples:
 
   # Process directory with custom paths
   python run_pipeline.py --input ./my_videos --output ./my_content
+
+  # Rate existing generated content
+  python run_pipeline.py --rate output/video_content.txt
         """
+    )
+
+    # Rating option
+    parser.add_argument(
+        "--rate",
+        type=str,
+        metavar="CONTENT_FILE",
+        help="Rate existing content file and provide detailed feedback"
     )
 
     # Input/Output options
@@ -125,6 +136,30 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # Handle rating mode
+    if args.rate:
+        try:
+            # Initialize pipeline (minimal init for rating)
+            pipeline = ContentPipeline(
+                output_dir=args.output,
+                verbose=not args.quiet
+            )
+
+            # Rate the content
+            result = pipeline.rate_existing_content(
+                content_file=args.rate,
+                save_rating=True
+            )
+
+            print(f"\n✅ Rating complete!")
+            if result.get("metadata_file"):
+                print(f"📊 Rating saved to metadata file")
+            sys.exit(0)
+
+        except Exception as e:
+            print(f"\n❌ Error rating content: {str(e)}")
+            sys.exit(1)
 
     # Initialize pipeline
     pipeline = ContentPipeline(

@@ -29,6 +29,12 @@ from tools.content_generator import (
     generate_all_content
 )
 
+from tools.content_rater import (
+    rate_content,
+    rate_platform_content,
+    compare_content_versions
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -97,14 +103,17 @@ class ContentPipeline:
             should_truncate_results=True
         )
 
-        # Create agent with content generation tools
+        # Create agent with content generation and rating tools
         self.agent = Agent(
             model=model,
             tools=[
                 generate_youtube_content,
                 generate_linkedin_post,
                 generate_twitter_thread,
-                generate_all_content
+                generate_all_content,
+                rate_content,
+                rate_platform_content,
+                compare_content_versions
             ],
             session_manager=session_manager,
             conversation_manager=conversation_manager,
@@ -353,6 +362,94 @@ Use the generate_all_content tool with this transcript:
                     f.write(f"   Error: {r['error']}\n\n")
 
         print(f"\n📊 Summary report saved: {report_file}")
+
+    def rate_existing_content(
+        self,
+        content_file: str | Path,
+        save_rating: bool = True
+    ) -> dict:
+        """
+        Rate existing generated content and provide detailed feedback.
+
+        Args:
+            content_file: Path to the content file to rate (e.g., output/video_content.txt)
+            save_rating: Whether to save rating to metadata file
+
+        Returns:
+            Dictionary containing rating analysis and feedback
+        """
+        content_file = Path(content_file)
+
+        if not content_file.exists():
+            raise FileNotFoundError(f"Content file not found: {content_file}")
+
+        # Read the content
+        with open(content_file, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Try to load metadata for context
+        metadata_file = content_file.parent / f"{content_file.stem.replace('_content', '_metadata')}.json"
+        metadata = {}
+        video_title = None
+        target_audience = None
+
+        if metadata_file.exists():
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                video_title = metadata.get("parameters", {}).get("video_title")
+                target_audience = metadata.get("parameters", {}).get("target_audience")
+
+        if self.verbose:
+            print(f"\n{'='*80}")
+            print(f"📊 Rating Content: {content_file.name}")
+            print(f"{'='*80}\n")
+            print(f"🤖 Analyzing content quality and providing feedback...")
+
+        # Use agent to rate the content
+        prompt = f"""Rate and provide detailed feedback on this generated social media content.
+
+{"Video Title: " + video_title if video_title else ""}
+{"Target Audience: " + target_audience if target_audience else ""}
+
+Use the rate_content tool to analyze this content and provide:
+- Platform-specific ratings (YouTube, LinkedIn, Twitter)
+- Overall quality rating
+- Strengths and weaknesses
+- Actionable improvement suggestions
+
+Content to rate:
+{content}
+"""
+
+        rating_result = self.agent(prompt)
+
+        if self.verbose:
+            print(f"\n{'='*80}")
+            print(f"📋 RATING & FEEDBACK")
+            print(f"{'='*80}\n")
+            print(rating_result)
+            print(f"\n{'='*80}\n")
+
+        # Save rating to metadata if requested
+        if save_rating and metadata_file.exists():
+            metadata["rating"] = {
+                "feedback": str(rating_result),
+                "rated_at": datetime.now().isoformat(),
+                "rating_model": "claude-sonnet-4-5-20250929"
+            }
+
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+
+            if self.verbose:
+                print(f"✅ Rating saved to: {metadata_file}\n")
+
+        return {
+            "content_file": str(content_file),
+            "metadata_file": str(metadata_file) if metadata_file.exists() else None,
+            "rating": str(rating_result),
+            "rated_at": datetime.now().isoformat()
+        }
 
 
 def main():

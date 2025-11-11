@@ -225,6 +225,11 @@ python run_pipeline.py \
   --hook "surprising discovery"
 ```
 
+Rate existing generated content:
+```bash
+python run_pipeline.py --rate output/video_content.txt
+```
+
 ## 📋 Features
 
 ### Video Transcription
@@ -261,6 +266,111 @@ The pipeline uses specialized AI sub-agents for each platform, ensuring:
 - Authentic, human-sounding content
 - SEO and engagement optimization
 
+### Content Rating & Feedback
+Built-in quality assurance with an expert rating agent:
+- **Automated Ratings**: 1-10 scale for each platform
+- **Detailed Feedback**: Specific strengths and weaknesses
+- **Actionable Suggestions**: Concrete improvements
+- **Quality Tracking**: Ratings saved to metadata for analysis
+
+## 📊 Rating System
+
+Get detailed feedback on your generated content using an expert content strategy agent.
+
+### How It Works
+
+The rating agent analyzes your content across multiple dimensions:
+
+**YouTube Content:**
+- SEO optimization and keyword placement
+- Title appeal and hook strength
+- Description completeness and CTAs
+- Tag diversity and searchability
+- Thumbnail concept effectiveness
+
+**LinkedIn Posts:**
+- Hook effectiveness (first 2 lines)
+- Authenticity and human voice
+- Formatting and readability
+- Value delivery and insights
+- Engagement potential
+
+**Twitter Threads:**
+- Hook tweet strength
+- Thread structure and flow
+- Character optimization
+- Formatting and visual appeal
+- CTA effectiveness
+
+### Usage
+
+Rate any generated content file:
+```bash
+python run_pipeline.py --rate output/video_content.txt
+```
+
+**Example Output:**
+```
+📊 Rating Content: video_content.txt
+🤖 Analyzing content quality and providing feedback...
+
+📋 RATING & FEEDBACK
+
+YOUTUBE CONTENT: 8/10
+Strengths:
+- Strong SEO optimization with front-loaded keywords
+- Compelling title options that create curiosity
+- Comprehensive description with clear value proposition
+
+Areas for Improvement:
+- Consider adding more specific technical tags
+- Thumbnail description could be more specific about colors
+
+LINKEDIN POST: 9/10
+Strengths:
+- Excellent hook that grabs attention immediately
+- Authentic, conversational tone throughout
+- Strategic use of line breaks and formatting
+
+Areas for Improvement:
+- Could add one more hashtag for broader reach
+
+TWITTER THREAD: 7/10
+Strengths:
+- Strong opening hook that stops scrolling
+- Good use of emojis and thread numbering
+
+Areas for Improvement:
+- Tweet 3 is 285 characters (over limit)
+- Could make tweets more quotable
+
+OVERALL: 8/10
+Recommendation: Minor edits suggested, then publish
+
+✅ Rating saved to metadata file
+```
+
+### Rating Storage
+
+Ratings are automatically saved to your metadata files:
+```json
+{
+  "video_file": "videos/tutorial.mp4",
+  "content_file": "output/tutorial_content.txt",
+  "rating": {
+    "feedback": "Detailed rating analysis...",
+    "rated_at": "2025-11-11T15:30:00",
+    "rating_model": "claude-sonnet-4-5-20250929"
+  }
+}
+```
+
+This allows you to:
+- Track content quality over time
+- Identify patterns in what works best
+- Compare ratings across different videos
+- Build a quality improvement workflow
+
 ## 🔧 Configuration
 
 ### Command Line Options
@@ -269,6 +379,8 @@ The pipeline uses specialized AI sub-agents for each platform, ensuring:
 python run_pipeline.py [OPTIONS]
 
 Options:
+  --rate CONTENT_FILE    Rate existing content and provide feedback
+
   --video, -v PATH       Process a single video file
   --input, -i DIR        Input directory (default: ./videos)
   --output, -o DIR       Output directory (default: ./output)
@@ -282,6 +394,7 @@ Options:
   --hook TEXT            Hook angle for social media
 
   --model TEXT           AI model (default: claude-sonnet-4-5-20250929)
+  --whisper-model TEXT   Whisper model size (default: base)
   --quiet, -q            Suppress verbose output
   --separate             Generate platform content separately
 ```
