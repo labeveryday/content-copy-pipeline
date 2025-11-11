@@ -1,0 +1,16 @@
+# Core dependencies
+strands-agents>=0.1.0
+strands-tools>=0.1.0
+python-dotenv>=1.0.0
+
+# OpenAI for Whisper transcription
+openai>=1.0.0
+
+# MCP support
+mcp>=0.1.0
+
+# Model providers
+anthropic>=0.40.0
+
+# Utilities
+pathlib2>=2.3.7
