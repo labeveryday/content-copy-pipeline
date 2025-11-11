@@ -6,10 +6,10 @@
     "verbose": true
   },
   "transcription": {
-    "model": "whisper-1",
+    "whisper_model": "base",
     "language": null,
     "temperature": 0.0,
-    "response_format": "verbose_json"
+    "note": "Whisper runs locally - choose: tiny, base, small, medium, large"
   },
   "content_generation": {
     "model_id": "claude-sonnet-4-5-20250929",

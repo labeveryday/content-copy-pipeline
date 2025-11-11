@@ -103,6 +103,13 @@ Examples:
         default="claude-sonnet-4-5-20250929",
         help="AI model for content generation (default: claude-sonnet-4-5-20250929)"
     )
+    parser.add_argument(
+        "--whisper-model",
+        type=str,
+        choices=["tiny", "base", "small", "medium", "large"],
+        default="base",
+        help="Whisper model size for transcription (default: base)"
+    )
 
     # Behavior options
     parser.add_argument(
@@ -125,6 +132,7 @@ Examples:
         output_dir=args.output,
         transcripts_dir=args.transcripts,
         model_id=args.model,
+        whisper_model=args.whisper_model,
         verbose=not args.quiet
     )
 

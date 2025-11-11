@@ -42,6 +42,7 @@ class ContentPipeline:
         output_dir: str | Path = "./output",
         transcripts_dir: str | Path = "./transcripts",
         model_id: str = "claude-sonnet-4-5-20250929",
+        whisper_model: str = "base",
         verbose: bool = True
     ):
         """
@@ -52,6 +53,7 @@ class ContentPipeline:
             output_dir: Directory to save generated content
             transcripts_dir: Directory to save transcripts
             model_id: AI model to use for content generation
+            whisper_model: Whisper model size (tiny, base, small, medium, large)
             verbose: Whether to print detailed progress
         """
         self.input_dir = Path(input_dir)
@@ -64,8 +66,8 @@ class ContentPipeline:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.transcripts_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize transcriber
-        self.transcriber = VideoTranscriber()
+        # Initialize transcriber with local Whisper model
+        self.transcriber = VideoTranscriber(model_size=whisper_model)
 
         # Initialize agent for content generation
         self._init_agent(model_id)
@@ -76,7 +78,8 @@ class ContentPipeline:
         model = anthropic_model(
             model_id=model_id,
             max_tokens=8000,
-            temperature=0.7
+            temperature=1.0,
+            thinking=False  # Disable thinking for content generation
         )
 
         # Setup session management
@@ -150,8 +153,7 @@ class ContentPipeline:
             print("📝 Step 1: Transcribing video...")
 
         transcript_result = self.transcriber.transcribe_video(
-            video_path=video_path,
-            response_format="verbose_json"
+            video_path=video_path
         )
 
         transcript_text = transcript_result["text"]
