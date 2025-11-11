@@ -77,7 +77,7 @@ graph TB
    - Supports 5 model sizes: `tiny`, `base`, `small`, `medium`, `large`
 
 2. **Main Orchestration Agent**
-   - Built with [Strands Agents](https://github.com/strands-agents/strands)
+   - Built with [Strands Agents](https://strandsagents.com/latest/)
    - Coordinates the entire workflow
    - Manages session state and conversation history
    - Delegates to specialized sub-agents using `use_agent` tool
@@ -461,8 +461,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 🙏 Acknowledgments
 
-- Built with [Strands Agents](https://github.com/strands-agents/strands)
-- Transcription powered by [OpenAI Whisper](https://openai.com/research/whisper)
+- Built with [Strands Agents](https://strandsagents.com/latest/)
+- Transcription powered by [OpenAI Whisper](https://github.com/openai/whisper)
 - Content generation powered by [Anthropic Claude](https://www.anthropic.com/)
 
 ## 📞 Support
