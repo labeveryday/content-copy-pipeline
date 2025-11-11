@@ -29,9 +29,9 @@ graph TB
     end
 
     subgraph Output
-        OUT1[📄 {video}_content.txt<br/>All Platform Content]
-        OUT2[📄 {video}_transcript.txt<br/>Full Transcript]
-        OUT3[📄 {video}_metadata.json<br/>Processing Data]
+        OUT1[📄 video_content.txt<br/>All Platform Content]
+        OUT2[📄 video_transcript.txt<br/>Full Transcript]
+        OUT3[📄 video_metadata.json<br/>Processing Data]
     end
 
     V -->|1. Load| W
