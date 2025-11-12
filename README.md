@@ -78,29 +78,40 @@ graph TB
    - Privacy-preserving (videos never leave your machine)
    - Supports 5 model sizes: `tiny`, `base`, `small`, `medium`, `large`
 
-2. **Main Orchestration Agent**
+2. **Pipeline Orchestration Agent**
    - Built with [Strands Agents](https://strandsagents.com/latest/)
    - Coordinates the entire workflow
    - Manages session state and conversation history
-   - Delegates to specialized sub-agents using `use_agent` tool
+   - Has access to tools that invoke specialized content and rating agents
+   - Supports custom prompts and conversational interactions
 
-3. **YouTube Sub-Agent**
+3. **YouTube Content Agent** (Persistent Instance)
    - **Expertise**: SEO optimization, discoverability, click-through rates
    - **System Prompt**: Trained on YouTube best practices
    - **Outputs**: 3 title options, rich descriptions, 15-20 tags, thumbnail concepts
    - **Focus**: Front-loading keywords, engagement optimization
+   - **Configured via**: `config/models.yaml` or `--content-provider`
 
-4. **LinkedIn Sub-Agent**
+4. **LinkedIn Content Agent** (Persistent Instance)
    - **Expertise**: Professional engagement, authentic voice
    - **System Prompt**: Emphasizes conversational tone, NOT corporate speak
    - **Outputs**: 1200-1500 char posts with hooks, hashtags, CTAs
    - **Focus**: Human authenticity, discussion generation
+   - **Configured via**: `config/models.yaml` or `--content-provider`
 
-5. **Twitter Sub-Agent**
+5. **Twitter Content Agent** (Persistent Instance)
    - **Expertise**: Thread structure, viral mechanics, concise communication
    - **System Prompt**: Optimized for scrolling behavior and engagement
    - **Outputs**: 5-8 tweet threads with hooks, emojis, thread numbering
    - **Focus**: Quotable tweets, standalone value, clear CTAs
+   - **Configured via**: `config/models.yaml` or `--content-provider`
+
+6. **Rating Agent** (Persistent Instance)
+   - **Expertise**: Content strategy and quality assessment
+   - **System Prompt**: Expert content critic with platform-specific criteria
+   - **Outputs**: Concise 1-page ratings with actionable feedback
+   - **Focus**: Platform-specific strengths, weaknesses, and improvements
+   - **Configured via**: `config/models.yaml` or `--rating-provider`
 
 #### Agent Communication Flow
 
@@ -108,54 +119,87 @@ graph TB
 sequenceDiagram
     participant U as User
     participant P as Pipeline
-    participant M as Main Agent
+    participant M as Pipeline Agent
+    participant T as Tools
     participant Y as YouTube Agent
     participant L as LinkedIn Agent
-    participant T as Twitter Agent
+    participant TW as Twitter Agent
 
     U->>P: Run pipeline with video
     P->>P: Transcribe locally (Whisper)
+    P->>P: Initialize agents from config
     P->>M: Send transcript + context
 
+    M->>T: Call generate_all_content tool
+
     par Parallel Content Generation
-        M->>Y: use_agent(prompt, system=YOUTUBE_PROMPT)
-        M->>L: use_agent(prompt, system=LINKEDIN_PROMPT)
-        M->>T: use_agent(prompt, system=TWITTER_PROMPT)
+        T->>Y: Invoke youtube_agent(prompt)
+        T->>L: Invoke linkedin_agent(prompt)
+        T->>TW: Invoke twitter_agent(prompt)
     end
 
-    Y-->>M: YouTube metadata
-    L-->>M: LinkedIn post
-    T-->>M: Twitter thread
+    Y-->>T: YouTube metadata
+    L-->>T: LinkedIn post
+    TW-->>T: Twitter thread
 
-    M->>P: Combined content
+    T-->>M: Combined content
+    M-->>P: Content result
     P->>U: Save to output/
 ```
 
 #### Key Design Decisions
 
-**1. Sub-Agent Pattern via `use_agent`**
+**1. Persistent Agent Architecture**
 ```python
-# Each sub-agent gets its own system prompt and model
-youtube_content = use_agent(
-    prompt=user_prompt,
-    model="anthropic/claude-sonnet-4-5-20250929",
-    system=YOUTUBE_SYSTEM_PROMPT  # Platform-specific expertise
-)
+# Agents initialized once at startup with configured models
+from config_loader import get_model_config
+
+content_model = get_model_config('content_agents')  # From config/models.yaml
+youtube_agent = Agent(model=content_model, system_prompt=YOUTUBE_SYSTEM_PROMPT)
+
+# Tools invoke persistent agents (not recreated each time)
+@tool
+def generate_youtube_content(transcript: str) -> str:
+    return youtube_agent(prompt)  # Reuses existing agent instance
 ```
 
-**2. Local-First Transcription**
+**Benefits:**
+- Better performance (agents initialized once, not per-request)
+- Centralized configuration via `config/models.yaml`
+- Easy provider switching (Anthropic → OpenAI → Ollama)
+- CLI overrides without code changes
+
+**2. Flexible Model Configuration**
+```yaml
+# config/models.yaml
+content_agents:
+  provider: anthropic  # or openai, ollama
+  model_id: claude-sonnet-4-5-20250929
+  max_tokens: 8000
+```
+
+**CLI Overrides:**
+```bash
+# Use OpenAI for content generation
+--content-provider openai --content-model gpt-4
+
+# Mix providers (Anthropic pipeline, Ollama content)
+--pipeline-provider anthropic --content-provider ollama
+```
+
+**3. Local-First Transcription**
 - Privacy: Videos never sent to external APIs
 - Cost: Zero transcription costs (was $0.06 per 10-min video)
 - Speed: 16x realtime with `base` model on modern CPUs
 - Offline: Works without internet connection
 
-**3. Platform-Specific System Prompts**
+**4. Platform-Specific System Prompts**
 - Each agent has deeply specialized instructions
 - Trained on platform best practices
 - Includes do's and don'ts specific to each platform
 - Optimizes for different success metrics (SEO vs engagement vs virality)
 
-**4. Smart Placeholder System**
+**5. Smart Placeholder System**
 - All content includes `{{YOUTUBE_LINK}}`, `{{CODE_REPO}}`, `{{BLOG_LINK}}`
 - Replace before publishing
 - Maintains consistent linking strategy across platforms
