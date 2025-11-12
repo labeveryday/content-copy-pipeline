@@ -140,10 +140,34 @@ Examples:
     # Handle rating mode
     if args.rate:
         try:
-            # Initialize pipeline (minimal init for rating)
+            # Check if file exists first
+            from pathlib import Path
+            content_file = Path(args.rate)
+
+            if not content_file.exists():
+                # Try to find similar files and suggest
+                output_dir = Path(args.output)
+                if output_dir.exists():
+                    content_files = list(output_dir.glob("*_content.txt"))
+                    if content_files:
+                        print(f"\n❌ File not found: {args.rate}")
+                        print(f"\nAvailable content files:")
+                        for f in content_files:
+                            print(f"  - {f}")
+                        print(f"\nUsage: python run_pipeline.py --rate {content_files[0]}")
+                    else:
+                        print(f"\n❌ No content files found in {output_dir}/")
+                        print(f"Generate content first, then rate it.")
+                else:
+                    print(f"\n❌ Output directory not found: {output_dir}/")
+                    print(f"Generate content first, then rate it.")
+                sys.exit(1)
+
+            # Initialize pipeline (minimal init for rating - skip Whisper)
             pipeline = ContentPipeline(
                 output_dir=args.output,
-                verbose=not args.quiet
+                verbose=not args.quiet,
+                rating_only=True
             )
 
             # Rate the content
@@ -153,8 +177,8 @@ Examples:
             )
 
             print(f"\n✅ Rating complete!")
-            if result.get("metadata_file"):
-                print(f"📊 Rating saved to metadata file")
+            if result.get("rating_file"):
+                print(f"📄 Rating saved to: {result['rating_file']}")
             sys.exit(0)
 
         except Exception as e:

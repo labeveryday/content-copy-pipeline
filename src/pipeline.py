@@ -49,7 +49,8 @@ class ContentPipeline:
         transcripts_dir: str | Path = "./transcripts",
         model_id: str = "claude-sonnet-4-5-20250929",
         whisper_model: str = "base",
-        verbose: bool = True
+        verbose: bool = True,
+        rating_only: bool = False
     ):
         """
         Initialize the Content Pipeline.
@@ -61,6 +62,7 @@ class ContentPipeline:
             model_id: AI model to use for content generation
             whisper_model: Whisper model size (tiny, base, small, medium, large)
             verbose: Whether to print detailed progress
+            rating_only: If True, skip transcriber initialization (for rating mode)
         """
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
@@ -72,8 +74,11 @@ class ContentPipeline:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.transcripts_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize transcriber with local Whisper model
-        self.transcriber = VideoTranscriber(model_size=whisper_model)
+        # Initialize transcriber with local Whisper model (skip if rating only)
+        if not rating_only:
+            self.transcriber = VideoTranscriber(model_size=whisper_model)
+        else:
+            self.transcriber = None
 
         # Initialize agent for content generation
         self._init_agent(model_id)
@@ -430,22 +435,40 @@ Content to rate:
             print(rating_result)
             print(f"\n{'='*80}\n")
 
-        # Save rating to metadata if requested
-        if save_rating and metadata_file.exists():
-            metadata["rating"] = {
-                "feedback": str(rating_result),
-                "rated_at": datetime.now().isoformat(),
-                "rating_model": "claude-sonnet-4-5-20250929"
-            }
+        # Save rating to separate text file for easy reading
+        rating_file = None
+        if save_rating:
+            rating_file = content_file.parent / f"{content_file.stem.replace('_content', '_rating')}.txt"
 
-            with open(metadata_file, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, indent=2)
+            with open(rating_file, "w", encoding="utf-8") as f:
+                f.write("Content Rating & Feedback\n")
+                f.write("="*80 + "\n\n")
+                f.write(f"Content File: {content_file.name}\n")
+                f.write(f"Rated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("Model: claude-sonnet-4-5-20250929\n")
+                f.write("\n" + "="*80 + "\n\n")
+                f.write(str(rating_result))
 
             if self.verbose:
-                print(f"✅ Rating saved to: {metadata_file}\n")
+                print(f"✅ Rating saved to: {rating_file}")
+
+            # Also update metadata with reference to rating file
+            if metadata_file.exists():
+                metadata["rating"] = {
+                    "rating_file": str(rating_file.name),
+                    "rated_at": datetime.now().isoformat(),
+                    "rating_model": "claude-sonnet-4-5-20250929"
+                }
+
+                with open(metadata_file, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=2)
+
+                if self.verbose:
+                    print(f"✅ Metadata updated: {metadata_file}\n")
 
         return {
             "content_file": str(content_file),
+            "rating_file": str(rating_file) if rating_file else None,
             "metadata_file": str(metadata_file) if metadata_file.exists() else None,
             "rating": str(rating_result),
             "rated_at": datetime.now().isoformat()

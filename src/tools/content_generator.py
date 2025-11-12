@@ -1,14 +1,13 @@
 """
 Content Generator Tool for Social Media
 
-This tool uses sub-agents to generate optimized content for different platforms.
-It leverages the use_agent tool from strands_tools to create specialized sub-agents
-for YouTube, LinkedIn, and Twitter content generation.
+This tool uses persistent Agent instances to generate optimized content for different platforms.
+Each platform has its own specialized agent with a dedicated system prompt.
 """
 
 from typing import Literal, Optional
-from strands import tool
-from strands_tools import use_agent
+from strands import tool, Agent
+from models.models import anthropic_model
 
 
 # System prompts for different content types
@@ -90,6 +89,41 @@ DO NOT:
 - Use corporate speak or buzzwords"""
 
 
+# Initialize persistent agents for each platform
+youtube_agent = Agent(
+    model=anthropic_model(
+        model_id="claude-sonnet-4-5-20250929",
+        max_tokens=8000,
+        temperature=1.0,
+        thinking=False
+    ),
+    system_prompt=YOUTUBE_SYSTEM_PROMPT,
+    name="YouTube Content Agent"
+)
+
+linkedin_agent = Agent(
+    model=anthropic_model(
+        model_id="claude-sonnet-4-5-20250929",
+        max_tokens=8000,
+        temperature=1.0,
+        thinking=False
+    ),
+    system_prompt=LINKEDIN_SYSTEM_PROMPT,
+    name="LinkedIn Content Agent"
+)
+
+twitter_agent = Agent(
+    model=anthropic_model(
+        model_id="claude-sonnet-4-5-20250929",
+        max_tokens=8000,
+        temperature=1.0,
+        thinking=False
+    ),
+    system_prompt=TWITTER_SYSTEM_PROMPT,
+    name="Twitter Content Agent"
+)
+
+
 @tool
 def generate_youtube_content(
     transcript: str,
@@ -138,11 +172,7 @@ Generate:
 
 Use placeholders: {{{{YOUTUBE_LINK}}}}, {{{{CODE_REPO}}}}, {{{{BLOG_LINK}}}}"""
 
-    return use_agent(
-        prompt=prompt,
-        model="anthropic/claude-sonnet-4-5-20250929",
-        system=YOUTUBE_SYSTEM_PROMPT
-    )
+    return youtube_agent(prompt)
 
 
 @tool
@@ -189,11 +219,7 @@ Create a LinkedIn post that:
 
 Remember: Make it engaging but professional, valuable but conversational."""
 
-    return use_agent(
-        prompt=prompt,
-        model="anthropic/claude-sonnet-4-5-20250929",
-        system=LINKEDIN_SYSTEM_PROMPT
-    )
+    return linkedin_agent(prompt)
 
 
 @tool
@@ -247,11 +273,7 @@ Add 2-3 hashtags in the first or last tweet.
 
 Remember: Make it educational, engaging, and quotable!"""
 
-    return use_agent(
-        prompt=prompt,
-        model="anthropic/claude-sonnet-4-5-20250929",
-        system=TWITTER_SYSTEM_PROMPT
-    )
+    return twitter_agent(prompt)
 
 
 @tool

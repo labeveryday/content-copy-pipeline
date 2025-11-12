@@ -1,73 +1,65 @@
 """
 Content Rating and Feedback Tool
 
-This tool uses an agent to analyze and rate generated social media content,
+This tool uses a persistent Agent instance to analyze and rate generated social media content,
 providing detailed feedback on quality, effectiveness, and areas for improvement.
 """
 
 from typing import Optional
-from strands import tool
-from strands_tools import use_agent
+from strands import tool, Agent
+from models.models import anthropic_model
 
 
-RATING_SYSTEM_PROMPT = """You are an expert content strategist and critic who evaluates social media content quality.
+RATING_SYSTEM_PROMPT = """You are a content strategist. Give SHORT, DIRECT feedback. MAX 400 WORDS TOTAL.
 
-Your task is to analyze generated social media content and provide:
-1. Detailed ratings (1-10 scale) for each platform
-2. Specific strengths and weaknesses
-3. Actionable improvement suggestions
-4. Overall quality assessment
+Use this EXACT format:
 
-RATING CRITERIA:
+━━━━━━━━━━━━━━━━━━━━━━━
+YOUTUBE: [X.X/10]
+✓ [strength]
+✓ [strength]
+✗ [issue]
+✗ [issue]
+FIX: [1-2 sentence fix]
 
-**YouTube Content (Titles, Descriptions, Tags, Thumbnails):**
-- SEO optimization (keyword placement, searchability)
-- Title appeal (hook strength, curiosity gap, clarity)
-- Description completeness (value proposition, timestamps, CTAs)
-- Tag diversity (mix of broad and specific)
-- Thumbnail concept clarity and visual appeal
-- Overall discoverability potential
+LINKEDIN: [X.X/10]
+✓ [strength]
+✓ [strength]
+✗ [issue]
+✗ [issue]
+FIX: [1-2 sentence fix]
 
-**LinkedIn Post:**
-- Hook effectiveness (first 2 lines grab attention)
-- Authenticity (sounds human, not corporate or AI-generated)
-- Formatting (readability, line breaks, visual flow)
-- Value delivery (insights, takeaways, lessons)
-- Engagement potential (likely to spark comments/discussion)
-- Professional tone while being conversational
-- Appropriate hashtag usage
+TWITTER: [X.X/10]
+✓ [strength]
+✓ [strength]
+✗ [issue]
+✗ [issue]
+FIX: [1-2 sentence fix]
 
-**Twitter Thread:**
-- Hook tweet strength (stops scrolling)
-- Thread structure (logical flow, standalone value per tweet)
-- Character optimization (under 280 chars per tweet)
-- Formatting (emojis, thread numbering, visual appeal)
-- CTA effectiveness (drives to full video/content)
-- Quotability (tweetable insights)
-- Overall engagement potential
+OVERALL: [X.X/10]
+[1 sentence recommendation]
+━━━━━━━━━━━━━━━━━━━━━━━
 
-RATING SCALE:
-10 = Exceptional, ready to publish, best-in-class
-9 = Excellent, minor tweaks only
-8 = Very good, a few improvements needed
-7 = Good, solid but could be enhanced
-6 = Decent, needs several improvements
-5 = Average, significant work needed
-4 = Below average, major issues
-3 = Poor, fundamental problems
-2 = Very poor, needs complete rework
-1 = Unusable, start from scratch
+RULES:
+- Each strength/issue: MAX 10 words
+- Each fix: MAX 2 sentences
+- NO long explanations
+- NO examples or rewrites
+- NO sections beyond this format
+- Target: 300-400 words total"""
 
-OUTPUT FORMAT:
-Provide your analysis in a structured format with:
-- Platform ratings (YouTube, LinkedIn, Twitter)
-- Overall rating
-- Key strengths (bullet points)
-- Areas for improvement (bullet points)
-- Specific actionable suggestions
-- Final recommendation (publish as-is, minor edits, major revision, etc.)
 
-Be honest but constructive. Focus on what works and what could be better."""
+# Initialize persistent rating agent
+rating_agent = Agent(
+    model=anthropic_model(
+        model_id="claude-sonnet-4-5-20250929",
+        max_tokens=4000,
+        temperature=1.0,
+        thinking=False
+    ),
+    system_prompt=RATING_SYSTEM_PROMPT,
+    name="Content Rating Agent"
+)
 
 
 @tool
@@ -97,28 +89,16 @@ def rate_content(
         - Actionable improvement suggestions
         - Publication recommendation
     """
-    prompt = f"""Analyze and rate this generated social media content.
+    prompt = f"""Rate this content. Use the EXACT format from your system prompt. MAX 400 words.
 
-{"VIDEO TITLE: " + video_title if video_title else ""}
-{"TARGET AUDIENCE: " + target_audience if target_audience else ""}
-{"CONTEXT: " + content_context if content_context else ""}
+{"VIDEO: " + video_title if video_title else ""}
+{"AUDIENCE: " + target_audience if target_audience else ""}
 
-CONTENT TO RATE:
 {content}
 
-Provide comprehensive ratings and feedback for:
-1. YouTube content (titles, description, tags, thumbnail)
-2. LinkedIn post
-3. Twitter thread
-4. Overall content package
+Follow the format exactly. No extra sections. No examples. Just: rating, strengths, issues, fix for each platform."""
 
-Include specific ratings (1-10), strengths, weaknesses, and actionable suggestions for improvement."""
-
-    return use_agent(
-        prompt=prompt,
-        model="anthropic/claude-sonnet-4-5-20250929",
-        system=RATING_SYSTEM_PROMPT
-    )
+    return rating_agent(prompt)
 
 
 @tool
@@ -165,11 +145,7 @@ Provide:
 - Actionable improvements
 - Examples of how to fix issues"""
 
-    return use_agent(
-        prompt=prompt,
-        model="anthropic/claude-sonnet-4-5-20250929",
-        system=RATING_SYSTEM_PROMPT
-    )
+    return rating_agent(prompt)
 
 
 @tool
@@ -207,8 +183,4 @@ Provide:
 - Situations where each might be preferred
 - Recommendations for combining best elements"""
 
-    return use_agent(
-        prompt=prompt,
-        model="anthropic/claude-sonnet-4-5-20250929",
-        system=RATING_SYSTEM_PROMPT
-    )
+    return rating_agent(prompt)
