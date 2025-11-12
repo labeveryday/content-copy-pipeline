@@ -1,0 +1,30 @@
+# Model Configuration for Content Pipeline
+#
+# Configure different models for different agent types.
+# Supports: anthropic, openai, ollama providers
+
+# Main pipeline orchestration agent (handles conversations and custom prompts)
+pipeline_agent:
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+  max_tokens: 8000
+  temperature: 1.0
+  thinking: false
+
+# Content generation agents (YouTube, LinkedIn, Twitter)
+content_agents:
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+  max_tokens: 8000
+  temperature: 1.0
+  thinking: false
+
+# Content rating agent
+rating_agent:
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+  max_tokens: 4000
+  temperature: 1.0
+  thinking: false
+
+# Future: Add transcription model config here

@@ -1,151 +1,127 @@
 # Quick Start Guide
 
-## 🚀 Get Started in 5 Minutes
+Get up and running with the Content Copy Pipeline in 5 minutes.
 
-### 1. Setup
+## Prerequisites
 
-```bash
-# Run the setup script
-./setup.sh
+- Python 3.9+
+- Anthropic API key (get one at https://console.anthropic.com/)
 
-# Edit .env and add your API keys
-nano .env
-```
-
-### 2. Add Videos
+## Installation
 
 ```bash
-# Copy your video files to the videos directory
-cp /path/to/your/video.mp4 ./videos/
+# 1. Clone the repo
+git clone https://github.com/labeveryday/content-copy-pipeline
+cd content-copy-pipeline
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Set up your API key
+cp .env.example .env
+# Edit .env and add: ANTHROPIC_API_KEY=your_key_here
+
+# 4. Create videos directory
+mkdir videos
 ```
 
-### 3. Run the Pipeline
+## Basic Usage
+
+### Process a Video
+
+Put your video file in the `videos/` directory, then run:
 
 ```bash
-# Process all videos
-python run_pipeline.py
-
-# Or process a single video
-python run_pipeline.py --video ./videos/my_video.mp4
+python run_pipeline.py --video videos/my-video.mp4
 ```
 
-### 4. Get Your Content
+This will:
+1. Transcribe the video locally (free, using Whisper)
+2. Generate optimized content for YouTube, LinkedIn, and Twitter
+3. Save everything to `output/`
 
-Check the `output/` directory for:
-- Generated social media content
-- Video transcripts
-- Metadata files
+**Output files:**
+- `output/my-video_content.txt` - All platform content
+- `output/my-video_metadata.json` - Processing details
+- `transcripts/my-video_transcript.txt` - Full transcript
 
-## 💡 Common Use Cases
+### Common Commands
 
-### Process videos for a specific audience
+**Custom parameters:**
 ```bash
-python run_pipeline.py \
-  --audience "network engineers" \
-  --keywords "AWS,Networking,Cloud"
-```
-
-### Add context to make posts more authentic
-```bash
-python run_pipeline.py \
-  --video ./videos/tutorial.mp4 \
-  --context "I learned this the hard way after 5 years in production" \
-  --takeaway "Always test your Lambda timeout settings"
-```
-
-### Generate content with a specific hook
-```bash
-python run_pipeline.py \
-  --hook "common mistake that costs thousands" \
-  --audience "DevOps engineers"
-```
-
-## 📝 What You'll Get
-
-For each video, you'll get:
-
-1. **YouTube Content**
-   - 3 optimized titles
-   - Complete description with timestamps
-   - 15-20 SEO tags
-   - Thumbnail description
-
-2. **LinkedIn Post**
-   - Engaging, human-sounding post (1200-1500 chars)
-   - Strategic formatting and hashtags
-   - Placeholders for links
-
-3. **Twitter Thread**
-   - 5-8 tweet thread with hook
-   - Each tweet under 280 characters
-   - Thread numbering and emojis
-
-## 🔑 Required API Keys
-
-Get your API keys:
-- OpenAI (Whisper): https://platform.openai.com/api-keys
-- Anthropic (Claude): https://console.anthropic.com/settings/keys
-
-Add them to `.env`:
-```
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-## 💰 Cost Estimate
-
-Approximate costs per 10-minute video:
-- Transcription (Whisper): ~$0.06
-- Content Generation (Claude): ~$0.15-0.30
-- **Total: ~$0.21-0.36 per video**
-
-## 🆘 Troubleshooting
-
-### "No video files found"
-- Make sure videos are in the `./videos` directory
-- Check that files have supported extensions (mp4, mp3, wav, etc.)
-
-### "OpenAI API key is required"
-- Verify `.env` file exists
-- Check that `OPENAI_API_KEY` is set correctly
-- No spaces around the = sign
-
-### "Model not found" or API errors
-- Verify `ANTHROPIC_API_KEY` is set
-- Check your API key has sufficient credits
-- Ensure you're using Python 3.9+
-
-## 📚 More Help
-
-- Full documentation: See [README.md](README.md)
-- Report issues: Open a GitHub issue
-- Examples: Check the examples/ directory (if available)
-
-## 🎯 Pro Tips
-
-1. **Batch Processing**: Put multiple videos in `./videos/` and run once
-2. **Reuse Transcripts**: Transcripts are saved - you can regenerate content without re-transcribing
-3. **Custom Prompts**: Edit `src/tools/content_generator.py` to customize the AI prompts
-4. **Different Models**: Use `--model` flag to try different Claude models
-
-## 📊 Example Workflow
-
-```bash
-# 1. Setup (one time)
-./setup.sh
-nano .env  # Add API keys
-
-# 2. Process your content
-python run_pipeline.py \
+python run_pipeline.py --video my-video.mp4 \
   --audience "developers" \
-  --keywords "Python,Tutorial,Beginner" \
-  --takeaway "Learn Python fundamentals in 10 minutes"
-
-# 3. Review output
-cat output/my_video_content.txt
-
-# 4. Copy to clipboard and publish!
-# All content has placeholders for {{YOUTUBE_LINK}}, {{CODE_REPO}}, {{BLOG_LINK}}
+  --keywords "Python,AI,Automation"
 ```
 
-Happy content creating! 🎉
+**Generate custom content:**
+```bash
+python run_pipeline.py --video my-video.mp4 \
+  --prompt "Generate 10 catchy YouTube titles"
+```
+
+**Rate existing content:**
+```bash
+python run_pipeline.py --rate output/my-video_content.txt
+```
+
+## Using Different AI Providers
+
+### OpenAI (GPT)
+```bash
+# Add OPENAI_API_KEY to .env
+python run_pipeline.py --video my-video.mp4 --content-provider openai
+```
+
+### Ollama (Local, Free)
+```bash
+# Install Ollama from https://ollama.com/
+ollama pull llama3.1:latest
+python run_pipeline.py --video my-video.mp4 \
+  --content-provider ollama \
+  --content-model llama3.1:latest
+```
+
+## Configuration
+
+Edit `config/models.yaml` to change default models:
+
+```yaml
+content_agents:
+  provider: anthropic  # or openai, ollama
+  model_id: claude-sonnet-4-5-20250929
+```
+
+## Troubleshooting
+
+**"Model not found"**
+- Check your API key in `.env`
+- Verify the model ID in `config/models.yaml`
+
+**"No module named 'whisper'"**
+```bash
+pip install openai-whisper
+```
+
+**Transcription is slow**
+- First run downloads the Whisper model (~100MB)
+- Use smaller model: `--whisper-model tiny`
+
+**Ollama hangs**
+- Some Ollama models don't support tool calling well
+- Try: `llama3.1:latest` or `qwen3:4b`
+- Use Ollama only for simple prompts, not full pipeline
+
+## What's Next?
+
+- Read the full [README.md](README.md) for advanced features
+- Check [CHANGELOG.md](CHANGELOG.md) for recent updates
+- Explore the architecture diagrams in the README
+
+## Getting Help
+
+- Issues: https://github.com/labeveryday/content-copy-pipeline/issues
+- Documentation: See README.md sections on:
+  - Model Configuration
+  - Rating System
+  - Agent Architecture

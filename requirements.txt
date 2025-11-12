@@ -13,3 +13,4 @@ ffmpeg-python
 
 # Utilities
 pathlib2
+pyyaml

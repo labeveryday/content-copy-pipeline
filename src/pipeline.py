@@ -17,22 +17,24 @@ from typing import Optional
 from dotenv import load_dotenv
 
 from strands import Agent
-from models import anthropic_model
 from strands.session.file_session_manager import FileSessionManager
 from strands.agent.conversation_manager import SlidingWindowConversationManager
 
+from config_loader import load_config, get_model_config
 from transcriber import VideoTranscriber
 from tools.content_generator import (
     generate_youtube_content,
     generate_linkedin_post,
     generate_twitter_thread,
-    generate_all_content
+    generate_all_content,
+    init_content_agents
 )
 
 from tools.content_rater import (
     rate_content,
     rate_platform_content,
-    compare_content_versions
+    compare_content_versions,
+    init_rating_agent
 )
 
 # Load environment variables
@@ -47,10 +49,10 @@ class ContentPipeline:
         input_dir: str | Path = "./videos",
         output_dir: str | Path = "./output",
         transcripts_dir: str | Path = "./transcripts",
-        model_id: str = "claude-sonnet-4-5-20250929",
         whisper_model: str = "base",
         verbose: bool = True,
-        rating_only: bool = False
+        rating_only: bool = False,
+        config_overrides: Optional[dict] = None
     ):
         """
         Initialize the Content Pipeline.
@@ -59,10 +61,11 @@ class ContentPipeline:
             input_dir: Directory containing video files
             output_dir: Directory to save generated content
             transcripts_dir: Directory to save transcripts
-            model_id: AI model to use for content generation
             whisper_model: Whisper model size (tiny, base, small, medium, large)
             verbose: Whether to print detailed progress
             rating_only: If True, skip transcriber initialization (for rating mode)
+            config_overrides: Optional dict of config overrides per agent type
+                Example: {'pipeline_agent': {'provider': 'openai'}}
         """
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
@@ -80,19 +83,29 @@ class ContentPipeline:
         else:
             self.transcriber = None
 
-        # Initialize agent for content generation
-        self._init_agent(model_id)
+        # Load model configurations
+        config = load_config()
 
-    def _init_agent(self, model_id: str):
-        """Initialize the Strands agent for content generation."""
-        # Setup model
-        model = anthropic_model(
-            model_id=model_id,
-            max_tokens=8000,
-            temperature=1.0,
-            thinking=False  # Disable thinking for content generation
-        )
+        # Initialize specialized content and rating agents
+        content_model = get_model_config('content_agents', config,
+                                        config_overrides.get('content_agents') if config_overrides else None)
+        rating_model = get_model_config('rating_agent', config,
+                                       config_overrides.get('rating_agent') if config_overrides else None)
 
+        init_content_agents(content_model)
+        init_rating_agent(rating_model)
+
+        # Initialize pipeline orchestration agent
+        pipeline_model = get_model_config('pipeline_agent', config,
+                                         config_overrides.get('pipeline_agent') if config_overrides else None)
+        self._init_agent(pipeline_model)
+
+    def _init_agent(self, model):
+        """Initialize the Strands pipeline orchestration agent.
+
+        Args:
+            model: Configured model instance from config system
+        """
         # Setup session management
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         session_dir = Path("./sessions")
@@ -108,7 +121,7 @@ class ContentPipeline:
             should_truncate_results=True
         )
 
-        # Create agent with content generation and rating tools
+        # Create pipeline orchestration agent with content generation and rating tools
         self.agent = Agent(
             model=model,
             tools=[
@@ -122,10 +135,13 @@ class ContentPipeline:
             ],
             session_manager=session_manager,
             conversation_manager=conversation_manager,
-            name="Content Generation Agent",
+            name="Content Pipeline Agent",
             system_prompt="""You are a content creation specialist that helps generate
             optimized social media content from video transcripts. You have access to
-            specialized tools for creating YouTube, LinkedIn, and Twitter content."""
+            specialized tools for creating YouTube, LinkedIn, and Twitter content.
+
+            You can also handle custom requests and have conversational interactions
+            to refine content based on user feedback."""
         )
 
     def process_video(

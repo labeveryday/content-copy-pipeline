@@ -89,39 +89,40 @@ DO NOT:
 - Use corporate speak or buzzwords"""
 
 
-# Initialize persistent agents for each platform
-youtube_agent = Agent(
-    model=anthropic_model(
-        model_id="claude-sonnet-4-5-20250929",
-        max_tokens=8000,
-        temperature=1.0,
-        thinking=False
-    ),
-    system_prompt=YOUTUBE_SYSTEM_PROMPT,
-    name="YouTube Content Agent"
-)
+# Module-level agent variables (initialized via init_content_agents)
+youtube_agent = None
+linkedin_agent = None
+twitter_agent = None
 
-linkedin_agent = Agent(
-    model=anthropic_model(
-        model_id="claude-sonnet-4-5-20250929",
-        max_tokens=8000,
-        temperature=1.0,
-        thinking=False
-    ),
-    system_prompt=LINKEDIN_SYSTEM_PROMPT,
-    name="LinkedIn Content Agent"
-)
 
-twitter_agent = Agent(
-    model=anthropic_model(
-        model_id="claude-sonnet-4-5-20250929",
-        max_tokens=8000,
-        temperature=1.0,
-        thinking=False
-    ),
-    system_prompt=TWITTER_SYSTEM_PROMPT,
-    name="Twitter Content Agent"
-)
+def init_content_agents(model):
+    """Initialize content generation agents with a configured model.
+
+    This should be called once during pipeline initialization with a model
+    from the config system.
+
+    Args:
+        model: Configured model instance (from config_loader.get_model_config)
+    """
+    global youtube_agent, linkedin_agent, twitter_agent
+
+    youtube_agent = Agent(
+        model=model,
+        system_prompt=YOUTUBE_SYSTEM_PROMPT,
+        name="YouTube Content Agent"
+    )
+
+    linkedin_agent = Agent(
+        model=model,
+        system_prompt=LINKEDIN_SYSTEM_PROMPT,
+        name="LinkedIn Content Agent"
+    )
+
+    twitter_agent = Agent(
+        model=model,
+        system_prompt=TWITTER_SYSTEM_PROMPT,
+        name="Twitter Content Agent"
+    )
 
 
 @tool

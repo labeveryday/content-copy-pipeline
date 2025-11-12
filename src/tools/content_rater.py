@@ -49,17 +49,26 @@ RULES:
 - Target: 300-400 words total"""
 
 
-# Initialize persistent rating agent
-rating_agent = Agent(
-    model=anthropic_model(
-        model_id="claude-sonnet-4-5-20250929",
-        max_tokens=4000,
-        temperature=1.0,
-        thinking=False
-    ),
-    system_prompt=RATING_SYSTEM_PROMPT,
-    name="Content Rating Agent"
-)
+# Module-level rating agent variable (initialized via init_rating_agent)
+rating_agent = None
+
+
+def init_rating_agent(model):
+    """Initialize rating agent with a configured model.
+
+    This should be called once during pipeline initialization with a model
+    from the config system.
+
+    Args:
+        model: Configured model instance (from config_loader.get_model_config)
+    """
+    global rating_agent
+
+    rating_agent = Agent(
+        model=model,
+        system_prompt=RATING_SYSTEM_PROMPT,
+        name="Content Rating Agent"
+    )
 
 
 @tool

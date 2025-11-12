@@ -2,6 +2,8 @@
 
 An AI-powered pipeline that transcribes videos and generates optimized social media content for YouTube, LinkedIn, and Twitter.
 
+> **New to this project?** Check out the [QUICKSTART.md](QUICKSTART.md) for a 5-minute setup guide!
+
 ## 🏗️ Architecture
 
 ### System Design
@@ -169,65 +171,106 @@ This pipeline automates the content creation workflow:
    - **Twitter**: Multi-tweet threads optimized for engagement
 3. **📝 Smart Placeholders**: All generated content includes placeholders for `{{YOUTUBE_LINK}}`, `{{CODE_REPO}}`, and `{{BLOG_LINK}}`
 
+## ⚙️ Model Configuration
+
+The pipeline uses a flexible model configuration system that supports multiple AI providers:
+
+**Supported Providers:**
+- **Anthropic** (Claude) - Default, best quality
+- **OpenAI** (GPT models)
+- **Ollama** (Local models)
+
+**Configuration File:** `config/models.yaml`
+
+```yaml
+pipeline_agent:      # Main orchestration agent
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+
+content_agents:      # YouTube, LinkedIn, Twitter generators
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+
+rating_agent:        # Content quality rating
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+```
+
+**CLI Overrides:**
+```bash
+# Use OpenAI for content generation
+python run_pipeline.py --content-provider openai --content-model gpt-4
+
+# Mix providers (Anthropic for pipeline, Ollama for content)
+python run_pipeline.py --pipeline-provider anthropic --content-provider ollama --content-model qwen3:4b
+```
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Python 3.9+
-- Anthropic API key (for content generation)
+- **At least one AI provider API key:**
+  - Anthropic API key (recommended)
+  - OpenAI API key (optional)
+  - Ollama installed locally (optional)
 - FFmpeg (for audio processing - auto-installed with dependencies)
 
-**Note**: Transcription runs locally using Whisper - no API key needed!
+**Note**: Video transcription runs locally using Whisper - no API costs!
 
 ### Installation
 
-1. Clone the repository:
+1. **Clone and setup:**
 ```bash
 git clone https://github.com/labeveryday/content-copy-pipeline
 cd content-copy-pipeline
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-3. Set up environment variables:
+2. **Configure API keys:**
 ```bash
 cp .env.example .env
-# Edit .env and add your API keys
+# Edit .env and add your ANTHROPIC_API_KEY (or OPENAI_API_KEY)
 ```
 
-4. Create directories and add videos:
+3. **Add your videos:**
 ```bash
-mkdir -p videos output transcripts
-# Add your video files to the ./videos directory
+mkdir -p videos
+# Copy your video files to ./videos/
 ```
 
 ### Basic Usage
 
-Process all videos in the `./videos` directory:
+**Process a video:**
 ```bash
-python run_pipeline.py
+python run_pipeline.py --video videos/my-video.mp4
 ```
 
-Process a specific video:
+**Process with custom parameters:**
 ```bash
-python run_pipeline.py --video path/to/your/video.mp4
+python run_pipeline.py --video my-video.mp4 \
+  --audience "developers" \
+  --keywords "Python,AI,Automation"
 ```
 
-With custom parameters:
+**Custom prompts (conversational mode):**
 ```bash
-python run_pipeline.py \
-  --audience "network engineers" \
-  --keywords "AWS,DevOps,Cloud" \
-  --takeaway "Learn how to optimize cloud infrastructure" \
-  --hook "surprising discovery"
+python run_pipeline.py --video my-video.mp4 \
+  --prompt "Generate 10 engaging YouTube titles"
 ```
 
-Rate existing generated content:
+**Rate existing content:**
 ```bash
-python run_pipeline.py --rate output/video_content.txt
+python run_pipeline.py --rate output/my-video_content.txt
+```
+
+**Switch AI providers:**
+```bash
+# Use OpenAI instead of Anthropic
+python run_pipeline.py --video my-video.mp4 --content-provider openai
+
+# Use local Ollama
+python run_pipeline.py --video my-video.mp4 --content-provider ollama --content-model llama3.1:latest
 ```
 
 ## 📋 Features
@@ -378,14 +421,9 @@ This allows you to:
 ```bash
 python run_pipeline.py [OPTIONS]
 
-Options:
-  --rate CONTENT_FILE    Rate existing content and provide feedback
-
+Content Options:
   --video, -v PATH       Process a single video file
-  --input, -i DIR        Input directory (default: ./videos)
-  --output, -o DIR       Output directory (default: ./output)
-  --transcripts, -t DIR  Transcripts directory (default: ./transcripts)
-
+  --prompt TEXT          Custom prompt for pipeline agent
   --title TEXT           Video title
   --audience TEXT        Target audience description
   --keywords TEXT        Comma-separated keywords
@@ -393,53 +431,82 @@ Options:
   --context TEXT         Personal context for authenticity
   --hook TEXT            Hook angle for social media
 
-  --model TEXT           AI model (default: claude-sonnet-4-5-20250929)
-  --whisper-model TEXT   Whisper model size (default: base)
+Model Configuration:
+  --pipeline-provider    Provider for pipeline agent (anthropic/openai/ollama)
+  --pipeline-model       Model ID for pipeline agent
+  --content-provider     Provider for content agents (anthropic/openai/ollama)
+  --content-model        Model ID for content agents
+  --rating-provider      Provider for rating agent (anthropic/openai/ollama)
+  --rating-model         Model ID for rating agent
+  --whisper-model        Whisper model size (tiny/base/small/medium/large)
+
+Directory Options:
+  --input, -i DIR        Input directory (default: ./videos)
+  --output, -o DIR       Output directory (default: ./output)
+  --transcripts, -t DIR  Transcripts directory (default: ./transcripts)
+
+Other Options:
+  --rate CONTENT_FILE    Rate existing content and provide feedback
   --quiet, -q            Suppress verbose output
   --separate             Generate platform content separately
 ```
 
 ### Configuration File
 
-Edit `config.json` to set default parameters:
+Edit `config/models.yaml` to set default models:
 
-```json
-{
-  "pipeline": {
-    "input_dir": "./videos",
-    "output_dir": "./output",
-    "transcripts_dir": "./transcripts"
-  },
-  "content_generation": {
-    "model_id": "claude-sonnet-4-5-20250929",
-    "temperature": 0.7
-  },
-  "default_parameters": {
-    "target_audience": "developers and tech professionals"
-  }
-}
+```yaml
+# Main pipeline orchestration agent
+pipeline_agent:
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+  max_tokens: 8000
+  temperature: 1.0
+  thinking: false
+
+# Content generation agents (YouTube, LinkedIn, Twitter)
+content_agents:
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+  max_tokens: 8000
+  temperature: 1.0
+  thinking: false
+
+# Content rating agent
+rating_agent:
+  provider: anthropic
+  model_id: claude-sonnet-4-5-20250929
+  max_tokens: 4000
+  temperature: 1.0
+  thinking: false
 ```
+
+**Note:** CLI options override config file settings.
 
 ## 📁 Project Structure
 
 ```
 content-copy-pipeline/
+├── config/
+│   └── models.yaml            # Model configuration (providers, model IDs)
 ├── src/
-│   ├── agent.py              # Base Strands agent
+│   ├── config_loader.py       # Configuration loader
 │   ├── pipeline.py            # Main pipeline orchestration
-│   ├── transcriber.py         # Video transcription module
+│   ├── transcriber.py         # Local Whisper transcription
 │   ├── models/
-│   │   └── models.py          # Model configurations
+│   │   └── models.py          # Model factory functions
 │   └── tools/
-│       ├── model_selector.py  # Model selection tool
-│       └── content_generator.py  # Content generation tools
+│       ├── content_generator.py  # YouTube, LinkedIn, Twitter agents
+│       └── content_rater.py      # Content rating agent
 ├── videos/                    # Input videos (create this)
 ├── output/                    # Generated content (auto-created)
+│   ├── *_content.txt          # Platform-specific content
+│   ├── *_metadata.json        # Processing metadata
+│   └── *_rating.txt           # Content quality ratings
 ├── transcripts/               # Video transcripts (auto-created)
-├── sessions/                  # Agent sessions (auto-created)
-├── run_pipeline.py            # CLI script
+├── sessions/                  # Agent conversation sessions (auto-created)
+├── run_pipeline.py            # CLI entry point
 ├── requirements.txt           # Python dependencies
-├── config.json                # Configuration
 └── .env                       # API keys (create from .env.example)
 ```
 

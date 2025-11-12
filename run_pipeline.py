@@ -107,12 +107,39 @@ Examples:
         help="Hook angle for social media (e.g., 'surprising discovery', 'common mistake')"
     )
 
-    # Model options
+    # Model configuration options
     parser.add_argument(
-        "--model",
+        "--pipeline-provider",
         type=str,
-        default="claude-sonnet-4-5-20250929",
-        help="AI model for content generation (default: claude-sonnet-4-5-20250929)"
+        choices=["anthropic", "openai", "ollama"],
+        help="AI provider for pipeline agent (overrides config)"
+    )
+    parser.add_argument(
+        "--pipeline-model",
+        type=str,
+        help="Model ID for pipeline agent (overrides config)"
+    )
+    parser.add_argument(
+        "--content-provider",
+        type=str,
+        choices=["anthropic", "openai", "ollama"],
+        help="AI provider for content generation agents (overrides config)"
+    )
+    parser.add_argument(
+        "--content-model",
+        type=str,
+        help="Model ID for content generation agents (overrides config)"
+    )
+    parser.add_argument(
+        "--rating-provider",
+        type=str,
+        choices=["anthropic", "openai", "ollama"],
+        help="AI provider for rating agent (overrides config)"
+    )
+    parser.add_argument(
+        "--rating-model",
+        type=str,
+        help="Model ID for rating agent (overrides config)"
     )
     parser.add_argument(
         "--whisper-model",
@@ -120,6 +147,13 @@ Examples:
         choices=["tiny", "base", "small", "medium", "large"],
         default="base",
         help="Whisper model size for transcription (default: base)"
+    )
+
+    # Custom prompt option
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        help="Custom prompt for the pipeline agent (e.g., 'Generate 10 engaging titles')"
     )
 
     # Behavior options
@@ -163,11 +197,21 @@ Examples:
                     print(f"Generate content first, then rate it.")
                 sys.exit(1)
 
+            # Build config overrides from CLI args
+            config_overrides = {}
+            if args.rating_provider or args.rating_model:
+                config_overrides['rating_agent'] = {}
+                if args.rating_provider:
+                    config_overrides['rating_agent']['provider'] = args.rating_provider
+                if args.rating_model:
+                    config_overrides['rating_agent']['model_id'] = args.rating_model
+
             # Initialize pipeline (minimal init for rating - skip Whisper)
             pipeline = ContentPipeline(
                 output_dir=args.output,
                 verbose=not args.quiet,
-                rating_only=True
+                rating_only=True,
+                config_overrides=config_overrides if config_overrides else None
             )
 
             # Rate the content
@@ -185,14 +229,38 @@ Examples:
             print(f"\n❌ Error rating content: {str(e)}")
             sys.exit(1)
 
+    # Build config overrides from CLI args
+    config_overrides = {}
+
+    if args.pipeline_provider or args.pipeline_model:
+        config_overrides['pipeline_agent'] = {}
+        if args.pipeline_provider:
+            config_overrides['pipeline_agent']['provider'] = args.pipeline_provider
+        if args.pipeline_model:
+            config_overrides['pipeline_agent']['model_id'] = args.pipeline_model
+
+    if args.content_provider or args.content_model:
+        config_overrides['content_agents'] = {}
+        if args.content_provider:
+            config_overrides['content_agents']['provider'] = args.content_provider
+        if args.content_model:
+            config_overrides['content_agents']['model_id'] = args.content_model
+
+    if args.rating_provider or args.rating_model:
+        config_overrides['rating_agent'] = {}
+        if args.rating_provider:
+            config_overrides['rating_agent']['provider'] = args.rating_provider
+        if args.rating_model:
+            config_overrides['rating_agent']['model_id'] = args.rating_model
+
     # Initialize pipeline
     pipeline = ContentPipeline(
         input_dir=args.input,
         output_dir=args.output,
         transcripts_dir=args.transcripts,
-        model_id=args.model,
         whisper_model=args.whisper_model,
-        verbose=not args.quiet
+        verbose=not args.quiet,
+        config_overrides=config_overrides if config_overrides else None
     )
 
     # Prepare generation parameters
@@ -211,13 +279,41 @@ Examples:
 
     try:
         if args.video:
-            # Process single video
-            result = pipeline.process_video(
-                video_path=args.video,
-                **gen_params
-            )
-            print(f"\n✅ Successfully processed: {args.video}")
-            print(f"📄 Content saved to: {result['content_file']}")
+            # Handle custom prompt mode
+            if args.prompt:
+                # Custom prompt: transcribe video and send prompt to agent
+                print(f"\n🎬 Processing video: {args.video}")
+                print(f"📝 Transcribing...")
+
+                transcript_result = pipeline.transcriber.transcribe_video(video_path=args.video)
+                transcript_text = transcript_result["text"]
+
+                # Save transcript
+                from pathlib import Path
+                video_path = Path(args.video)
+                transcript_file = pipeline.transcripts_dir / f"{video_path.stem}_transcript.txt"
+                with open(transcript_file, "w", encoding="utf-8") as f:
+                    f.write(transcript_text)
+
+                print(f"✅ Transcript saved: {transcript_file}")
+                print(f"\n🤖 Executing custom prompt...")
+
+                # Send custom prompt with transcript to pipeline agent
+                full_prompt = f"{args.prompt}\n\nTranscript:\n{transcript_text}"
+                result = pipeline.agent(full_prompt)
+
+                print(f"\n{'='*80}")
+                print(result)
+                print(f"{'='*80}\n")
+
+            else:
+                # Standard pipeline: process video normally
+                result = pipeline.process_video(
+                    video_path=args.video,
+                    **gen_params
+                )
+                print(f"\n✅ Successfully processed: {args.video}")
+                print(f"📄 Content saved to: {result['content_file']}")
 
         else:
             # Process entire directory
