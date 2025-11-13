@@ -16,26 +16,34 @@ graph TB
         V[Video Files<br/>MP4, MP3, WAV, etc.]
     end
 
-    subgraph "Local Processing"
-        W[Whisper Model<br/>Local Transcription<br/>No API Required]
-    end
+    subgraph "📦 PIPELINE CLASS (Orchestrator)"
+        direction TB
+        
+        subgraph "Step 1: Transcription"
+            W[Whisper Model<br/>Local Transcription<br/>No API Required]
+        end
 
-    subgraph "AI Preprocessing"
-        P[Preprocessor Agent<br/>Claude Haiku 4.5<br/>Fix Names & Terms]
-    end
+        subgraph "Step 2: Preprocessing"
+            P[Preprocessor Agent<br/>Claude Haiku 4.5<br/>Fix Names & Terms]
+        end
 
-    subgraph "Agent Orchestration"
-        MA[Pipeline Agent<br/>Coordinator<br/>Strands Agent]
-    end
+        subgraph "Step 3: Content Generation"
+            MA[Orchestrator Agent<br/>Strands Agent<br/>+ Session Manager<br/>+ Tools]
+            
+            subgraph "Content Tools"
+                YT[YouTube Agent<br/>SEO & Metadata]
+                LI[LinkedIn Agent<br/>Professional Posts]
+                TW[Twitter Agent<br/>Thread Generation]
+            end
+        end
 
-    subgraph "Specialized Sub-Agents"
-        YT[YouTube Agent<br/>SEO & Metadata<br/>Titles, Tags, Thumbnails]
-        LI[LinkedIn Agent<br/>Professional Engagement<br/>Human-Voice Posts]
-        TW[Twitter Agent<br/>Thread Generation<br/>Viral Optimization]
-    end
+        subgraph "Step 4: Optional Rating"
+            R[Rating Agent<br/>Content Critic]
+        end
 
-    subgraph "Quality Assurance"
-        R[Rating Agent<br/>Content Critic<br/>Platform Analysis]
+        subgraph "Step 5: Save Files"
+            SAVE[Save Results<br/>Content + Metadata<br/>+ Transcripts]
+        end
     end
 
     subgraph Output
@@ -45,20 +53,22 @@ graph TB
         OUT3[📄 video_metadata.json<br/>Costs & Metrics]
     end
 
-    V -->|1. Load| W
-    W -->|2. Transcript| P
-    P -->|3. Clean| MA
-    MA -->|4. Delegate| YT
-    MA -->|4. Delegate| LI
-    MA -->|4. Delegate| TW
-    YT -->|5. Generate| OUT1
-    LI -->|5. Generate| OUT1
-    TW -->|5. Generate| OUT1
+    V -->|Load| W
+    W -->|Raw Text| P
+    P -->|Cleaned Text| MA
+    MA -->|Tool Call| YT
+    MA -->|Tool Call| LI
+    MA -->|Tool Call| TW
+    YT -->|Content| MA
+    LI -->|Content| MA
+    TW -->|Content| MA
     MA -.->|Optional| R
-    R -.->|6. Rate| OUT1
+    R -.->|Rating| MA
+    MA -->|Results| SAVE
+    SAVE -->|Write| OUT1
     W -.->|Save| OUT2
     P -.->|Save| OUT2C
-    MA -.->|Save| OUT3
+    SAVE -->|Write| OUT3
 
     style W fill:#e1f5e1
     style P fill:#ffe4e1
@@ -67,6 +77,7 @@ graph TB
     style LI fill:#f3e5f5
     style TW fill:#e0f2f1
     style R fill:#f0f0f0
+    style SAVE fill:#fef3c7
 ```
 
 ### Agent Architecture Design
@@ -87,13 +98,22 @@ graph TB
 
 #### Component Breakdown
 
-1. **Local Whisper Transcription**
+1. **Pipeline Class** (`ContentCopyPipeline`)
+   - **Main orchestrator** that coordinates all steps
+   - Manages file I/O: reads videos, saves transcripts, content, and metadata
+   - Initializes all agents with proper session management
+   - Tracks costs and metrics across all steps
+   - Handles preprocessing configuration
+   - **NOT** an AI agent itself - it's a Python class that manages the workflow
+   - Located in: `src/pipeline.py`
+
+2. **Local Whisper Transcription**
    - Runs completely on-device
    - No API costs or rate limits
    - Privacy-preserving (videos never leave your machine)
    - Supports 5 model sizes: `tiny`, `base`, `small`, `medium`, `large`
 
-2. **Transcript Preprocessor Agent** ✨ NEW
+3. **Transcript Preprocessor Agent** ✨ NEW
    - Built with Strands Agents using Claude Haiku 4.5
    - **Expertise**: Transcript cleaning, name correction, formatting
    - **System Prompt**: Context-aware correction rules
@@ -102,36 +122,37 @@ graph TB
    - **Configured via**: `config.json` (enable/disable, custom terms)
    - **Cost**: ~$0.02-0.08 per video (using efficient Haiku model)
 
-3. **Pipeline Orchestration Agent**
+4. **Pipeline Orchestrator Agent** (Strands Agent)
    - Built with [Strands Agents](https://strandsagents.com/latest/)
-   - Coordinates the entire workflow
+   - The "brain" that calls content generation and rating tools
    - Manages session state and conversation history
    - Has access to tools that invoke specialized content and rating agents
    - Supports custom prompts and conversational interactions
    - **System Prompt**: Loaded from `system_prompts/pipeline_orchestrator.txt`
+   - **Session Management**: Shared `DATE_TIME` with agent-specific names
 
-4. **YouTube Content Agent** (Persistent Instance)
+5. **YouTube Content Agent** (Persistent Instance)
    - **Expertise**: SEO optimization, discoverability, click-through rates
    - **System Prompt**: Loaded from `system_prompts/youtube_content_agent.txt`
    - **Outputs**: 3 title options, rich descriptions, 15-20 tags, thumbnail concepts
    - **Focus**: Front-loading keywords, engagement optimization
    - **Configured via**: `config/models.yaml` or `--content-provider`
 
-5. **LinkedIn Content Agent** (Persistent Instance)
+6. **LinkedIn Content Agent** (Persistent Instance)
    - **Expertise**: Professional engagement, authentic voice
    - **System Prompt**: Loaded from `system_prompts/linkedin_content_agent.txt`
    - **Outputs**: 1200-1500 char posts with hooks, hashtags, CTAs
    - **Focus**: Human authenticity, discussion generation
    - **Configured via**: `config/models.yaml` or `--content-provider`
 
-6. **Twitter Content Agent** (Persistent Instance)
+7. **Twitter Content Agent** (Persistent Instance)
    - **Expertise**: Thread structure, viral mechanics, concise communication
    - **System Prompt**: Loaded from `system_prompts/twitter_content_agent.txt`
    - **Outputs**: 5-8 tweet threads with hooks, emojis, thread numbering
    - **Focus**: Quotable tweets, standalone value, clear CTAs
    - **Configured via**: `config/models.yaml` or `--content-provider`
 
-7. **Rating Agent** (Persistent Instance)
+8. **Rating Agent** (Persistent Instance)
    - **Expertise**: Content strategy and quality assessment
    - **System Prompt**: Loaded from `system_prompts/rating_agent.txt`
    - **Outputs**: Concise 1-page ratings with actionable feedback
@@ -143,33 +164,50 @@ graph TB
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant P as Pipeline
-    participant M as Pipeline Agent
+    participant PC as Pipeline Class
+    participant W as Whisper
+    participant PRE as Preprocessor Agent
+    participant ORC as Orchestrator Agent
     participant T as Tools
     participant Y as YouTube Agent
     participant L as LinkedIn Agent
     participant TW as Twitter Agent
+    participant R as Rating Agent
 
-    U->>P: Run pipeline with video
-    P->>P: Transcribe locally (Whisper)
-    P->>P: Initialize agents from config
-    P->>M: Send transcript + context
-
-    M->>T: Call generate_all_content tool
+    U->>PC: process_video(path)
+    PC->>PC: Load config & initialize agents
+    PC->>W: transcribe_video()
+    W-->>PC: raw_transcript.txt
+    PC->>PC: Save raw transcript
+    
+    PC->>PRE: preprocess(transcript)
+    PRE-->>PC: cleaned_transcript
+    PC->>PC: Save cleaned transcript
+    
+    PC->>ORC: Send cleaned transcript
+    ORC->>T: Call generate_all_content tool
 
     par Parallel Content Generation
-        T->>Y: Invoke youtube_agent(prompt)
-        T->>L: Invoke linkedin_agent(prompt)
-        T->>TW: Invoke twitter_agent(prompt)
+        T->>Y: generate_youtube_content()
+        T->>L: generate_linkedin_post()
+        T->>TW: generate_twitter_thread()
     end
 
-    Y-->>T: YouTube metadata
-    L-->>T: LinkedIn post
-    TW-->>T: Twitter thread
+    Y-->>T: YouTube metadata + metrics
+    L-->>T: LinkedIn post + metrics
+    TW-->>T: Twitter thread + metrics
+    T-->>ORC: Combined content
 
-    T-->>M: Combined content
-    M-->>P: Content result
-    P->>U: Save to output/
+    opt Optional Rating
+        ORC->>R: rate_content()
+        R-->>ORC: Rating + feedback
+    end
+
+    ORC-->>PC: ContentResult (structured)
+    PC->>PC: Calculate total costs
+    PC->>PC: Save video_content.txt
+    PC->>PC: Save video_metadata.json
+    PC-->>U: Processing complete
 ```
 
 #### Key Design Decisions
