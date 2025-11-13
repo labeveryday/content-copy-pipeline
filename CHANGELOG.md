@@ -75,24 +75,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - All agents instrumented with consistent logging
   - Better debugging and monitoring capabilities
 
+- **Multi-Provider Support (Phase 1)** ⭐ NEW
+  - **AWS Bedrock Integration**:
+    - New `bedrock_model()` function in `src/models/models.py`
+    - Support for API key and IAM authentication
+    - Automatic model ID mapping (e.g., `claude-haiku-4-5-20251001` → `anthropic.claude-haiku-4-20251001-v1:0`)
+    - Cross-region inference support (e.g., `us.anthropic.*`, `eu.anthropic.*`)
+    - Enterprise features: guardrails, compliance, unified AWS billing
+  - **Expanded OpenAI Support**:
+    - Added `gpt-4o-mini` to pricing database ($0.15/$0.60 per M tokens)
+    - Cost optimization: 60-75% savings vs Claude Haiku for preprocessing
+    - Full support for all OpenAI models
+  - **Provider Flexibility**:
+    - Mix and match providers per agent (e.g., OpenAI for preprocessing, Anthropic for content)
+    - Centralized provider configuration in `config/models.yaml`
+    - 4 supported providers: Anthropic (default), Bedrock, OpenAI, Ollama
+  - **Model ID Mapping System**:
+    - New `MODEL_ID_MAPPING` in `config_loader.py`
+    - Unified model IDs work across all providers
+    - Automatic translation to provider-specific formats
+    - Transparent to end users
+  - **Documentation**:
+    - New provider table with setup guides in README.md
+    - Collapsible provider setup instructions with links
+    - Cost optimization examples (mix Bedrock, OpenAI, Anthropic)
+    - Updated QUICKSTART.md with all 4 providers
+
 - **Dynamic Pricing System**
   - New `src/utils/pricing.py` module for model-based cost calculations
   - Pricing data centralized in `config/models_pricing.json`
   - Automatic cost calculation based on selected model
-  - Support for all configured models across providers (Anthropic, OpenAI, Ollama, Writer)
+  - Support for all configured models across providers (Anthropic, Bedrock, OpenAI, Ollama, Writer)
   - Graceful fallback to $0.00 for models without pricing data
 
 - **Flexible Model Configuration System**
   - New `config/models.yaml` for centralized model configuration
-  - Support for multiple AI providers: Anthropic, OpenAI, Ollama
-  - Separate configuration for pipeline agent, content agents, and rating agent
+  - Support for multiple AI providers: Anthropic, Bedrock, OpenAI, Ollama
+  - Separate configuration for pipeline agent, content agents, rating agent, preprocessor agent
   - CLI overrides for all model settings:
     - `--pipeline-provider` / `--pipeline-model`
     - `--content-provider` / `--content-model`
     - `--rating-provider` / `--rating-model`
+    - `--preprocessor-provider` / `--preprocessor-model`
   - Enhanced `get_model_config()` with `return_model_id` parameter
     - Returns tuple `(model, model_id)` when needed
     - Solves model ID extraction from model objects
+  - Provider-agnostic: works seamlessly with any supported provider
 
 - **Custom Prompt Feature**
   - `--prompt` flag for conversational interactions with pipeline agent
@@ -131,6 +159,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Returns tuple `(model, model_id)` for proper cost tracking
   - Solves issue where model objects don't expose `.model_id` attribute
   - Model objects used for agent creation, model IDs used for pricing/JSON
+  - **New provider handling**:
+    - Automatic model ID mapping via `get_provider_model_id()`
+    - Unified model IDs in config, provider-specific IDs internally
+    - Supports Bedrock provider (`bedrock_model()` function)
+    - Returns unified model ID for consistent pricing lookups
+  - Updated `config/models.yaml` with provider documentation and examples
 
 - **Preprocessing Result**
   - Enhanced `PreprocessingResult` dataclass with detailed token breakdown:

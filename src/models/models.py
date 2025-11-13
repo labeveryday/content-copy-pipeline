@@ -1,6 +1,8 @@
 import os
+import boto3
 from dotenv import load_dotenv
 from strands.models.anthropic import AnthropicModel
+from strands.models.bedrock import BedrockModel
 from strands.models.openai import OpenAIModel
 from strands.models.ollama import OllamaModel
 from strands.models.writer import WriterModel
@@ -64,6 +66,92 @@ def anthropic_model(api_key: str = os.getenv("ANTHROPIC_API_KEY"),
     )
 
 # ============================================================================
+# AWS BEDROCK MODEL
+# https://docs.aws.amazon.com/bedrock/latest/userguide/model-ids.html
+# ============================================================================
+
+def bedrock_model(api_key: str = os.getenv("BEDROCK_API_KEY"),
+    region: str = os.getenv("AWS_REGION", "us-west-2"),
+    model_id: str = "anthropic.claude-haiku-4-20251001-v1:0",
+    max_tokens: int = 4000,
+    temperature: float = 1,
+    thinking: bool = False,
+    budget_tokens: int = 2000) -> BedrockModel:
+    """
+    AWS Bedrock model configuration
+    
+    Authentication Options:
+    1. API Key (Recommended for development):
+       - Set BEDROCK_API_KEY and AWS_REGION environment variables
+       - Generate keys at: https://console.aws.amazon.com/bedrock/home#/api-keys
+    
+    2. IAM Credentials (Recommended for production):
+       - Configure via 'aws configure' or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
+       - Requires bedrock:InvokeModel and bedrock:InvokeModelWithResponseStream permissions
+    
+    Args:
+        api_key: Bedrock API key (default: os.getenv("BEDROCK_API_KEY"))
+        region: AWS region (default: os.getenv("AWS_REGION", "us-west-2"))
+        model_id: Bedrock model ID (default: anthropic.claude-haiku-4-20251001-v1:0)
+        max_tokens: Maximum tokens to generate (default: 4000, max: 64000)
+        temperature: Sampling temperature (default: 1)
+        thinking: Enable extended thinking (default: False)
+        budget_tokens: Budget tokens for thinking (default: 2000)
+    
+    Returns:
+        BedrockModel
+    
+    Available Claude models on Bedrock:
+    - anthropic.claude-haiku-4-20251001-v1:0 - 200k context - 64k max_output - $1/$5 per M tokens
+    - anthropic.claude-sonnet-4-20250514-v1:0 - 200k context - 64k max_output - $3/$15 per M tokens
+    - anthropic.claude-3-5-haiku-20241022-v2:0 - 200k context - 8k max_output - $0.80/$4 per M tokens
+    
+    For cross-region inference, prefix with region: 
+    - us.anthropic.claude-sonnet-4-20250514-v1:0 (US regions)
+    - eu.anthropic.claude-sonnet-4-20250514-v1:0 (EU regions)
+    """
+    # Configure thinking parameter
+    if thinking:
+        if budget_tokens >= max_tokens:
+            raise ValueError("Budget tokens cannot be greater than max tokens")
+        thinking_config = {
+            "type": "enabled",
+            "budget_tokens": budget_tokens
+        }
+    else:
+        thinking_config = {
+            "type": "disabled",
+        }
+    
+    # Configure authentication
+    if api_key:
+        # Use API key authentication
+        boto_session = boto3.Session(region_name=region)
+        return BedrockModel(
+            boto_session=boto_session,
+            max_tokens=max_tokens,
+            model_id=model_id,
+            params={
+                "temperature": temperature,
+                "thinking": thinking_config
+            },
+            # API key will be passed via headers (handled by Strands SDK)
+            client_args={"api_key": api_key}
+        )
+    else:
+        # Use IAM credentials (default boto3 credential chain)
+        boto_session = boto3.Session(region_name=region)
+        return BedrockModel(
+            boto_session=boto_session,
+            max_tokens=max_tokens,
+            model_id=model_id,
+            params={
+                "temperature": temperature,
+                "thinking": thinking_config
+            }
+        )
+
+# ============================================================================
 # OPENAI MODEL
 # https://platform.openai.com/docs/models
 # ============================================================================
@@ -72,6 +160,7 @@ def openai_model(api_key: str = os.getenv("OPENAI_API_KEY"),
     model_id: str = "gpt-5-mini-2025-08-07",
     max_tokens: int = 16000,
     temperature: float = 1,
+    reasoning: bool = False,
     reasoning_effort: str = "medium") -> OpenAIModel:
     """
     List of OpenAI models
@@ -94,16 +183,23 @@ def openai_model(api_key: str = os.getenv("OPENAI_API_KEY"),
     - gpt-5-pro-2025-10-06 - 400k context - 272K max_output tokens - input $1.25/M - output $120/M - Reasoning yes - slower
     - o4-mini-deep-research-2025-06-26 - 200k context - 100k max_output tokens - input $2/M - output $8/M - Reasoning yes
     """
+    params = {
+        "max_completion_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    
+    # Only O1/O4/GPT-5 series models support reasoning_effort parameter
+    # Models that DON'T support it: gpt-4o, gpt-4o-mini, gpt-4.1, etc.
+    reasoning_models = ["o1-", "o4-", "gpt-5-"]
+    if any(model_id.startswith(prefix) for prefix in reasoning_models):
+        params["reasoning_effort"] = reasoning_effort
+    
     return OpenAIModel(
         client_args={
             "api_key": api_key,
         },
         model_id=model_id,
-        params={
-            "max_completion_tokens": max_tokens,
-            "temperature": temperature,
-            "reasoning_effort": reasoning_effort,
-        }
+        params=params
     )
 
 

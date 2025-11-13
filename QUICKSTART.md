@@ -5,7 +5,11 @@ Get up and running with the Content Copy Pipeline in 5 minutes.
 ## Prerequisites
 
 - Python 3.9+
-- Anthropic API key (get one at https://console.anthropic.com/)
+- **At least one AI provider:**
+  - **Anthropic** API key (recommended - default): https://console.anthropic.com/
+  - **AWS Bedrock** API key or IAM (enterprise): https://console.aws.amazon.com/bedrock/
+  - **OpenAI** API key (cost optimization): https://platform.openai.com/api-keys
+  - **Ollama** (free, local): https://ollama.com/
 
 ## Installation
 
@@ -90,13 +94,45 @@ python run_pipeline.py --rate output/my-video_content.txt
 
 ## Using Different AI Providers
 
-### OpenAI (GPT)
+The pipeline supports **4 providers**: Anthropic (default), AWS Bedrock, OpenAI, and Ollama.
+
+### AWS Bedrock (Enterprise) 🏢
+**Best for:** Enterprise deployments, compliance, unified AWS billing
+
+**Quick Setup:**
 ```bash
-# Add OPENAI_API_KEY to .env
-python run_pipeline.py --video my-video.mp4 --content-provider openai
+# Add to .env
+BEDROCK_API_KEY=your_bedrock_key
+AWS_REGION=us-west-2
+
+# Generate key at: https://console.aws.amazon.com/bedrock/home#/api-keys
+python run_pipeline.py --video my-video.mp4 --content-provider bedrock
 ```
 
-### Ollama (Local, Free)
+**Alternative (IAM):**
+```bash
+aws configure  # Set up AWS credentials
+python run_pipeline.py --video my-video.mp4 --content-provider bedrock
+```
+
+### OpenAI (Cost Optimization) 💰
+**Best for:** Saving money on preprocessing (60-75% cheaper than Claude!)
+
+```bash
+# Add OPENAI_API_KEY to .env
+# Use gpt-4o-mini for ultra-low-cost preprocessing:
+python run_pipeline.py --video my-video.mp4 \
+  --preprocessor-provider openai \
+  --preprocessor-model gpt-4o-mini
+```
+
+**Cost Comparison:**
+- Claude Haiku preprocessing: ~$0.02-0.08/video
+- GPT-4o-mini preprocessing: ~$0.005-0.02/video ✨ **75% savings!**
+
+### Ollama (Local, Free) 🏠
+**Best for:** Privacy, offline work, no API costs
+
 ```bash
 # Install Ollama from https://ollama.com/
 ollama pull llama3.1:latest
@@ -114,14 +150,20 @@ Edit to change which AI models to use:
 ```yaml
 # Content generation
 content_agents:
-  provider: anthropic  # or openai, ollama
+  provider: anthropic  # or bedrock, openai, ollama
   model_id: claude-sonnet-4-5-20250929
 
-# Transcript preprocessing  
+# Transcript preprocessing (try openai for cost savings!)
 preprocessor_agent:
-  provider: anthropic
-  model_id: claude-haiku-4-5-20251001
+  provider: openai        # 60-75% cheaper than anthropic!
+  model_id: gpt-4o-mini   # or claude-haiku-4-5-20251001
 ```
+
+**Provider Options:**
+- `anthropic` - Direct API (default, simplest)
+- `bedrock` - AWS Bedrock (enterprise, compliance)
+- `openai` - OpenAI API (cost optimization)
+- `ollama` - Local models (free, private)
 
 ### Preprocessing Settings (`config.json`)
 

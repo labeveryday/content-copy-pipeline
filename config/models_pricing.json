@@ -127,10 +127,22 @@
         "context_window": 128000,
         "max_output_tokens": 16000,
         "cost_input": 2.50,
-        "cost_output": 1.25,
+        "cost_output": 10.00,
         "speed": "medium",
         "quality": "high",
         "use_cases": ["multimodal tasks", "vision", "image analysis"]
+    },
+    "gpt-4o-mini": {
+        "provider": "openai",
+        "name": "GPT-4o Mini",
+        "capabilities": ["chat", "code", "simple-tasks", "multimodal"],
+        "context_window": 128000,
+        "max_output_tokens": 16000,
+        "cost_input": 0.15,
+        "cost_output": 0.60,
+        "speed": "fast",
+        "quality": "good",
+        "use_cases": ["cost-effective preprocessing", "simple tasks", "high volume operations"]
     },
     "gpt-5-pro-2025-10-06": {
         "provider": "openai",

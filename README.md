@@ -278,38 +278,72 @@ This pipeline automates the content creation workflow:
    - **Twitter**: Multi-tweet threads optimized for engagement
 3. **📝 Smart Placeholders**: All generated content includes placeholders for `{{YOUTUBE_LINK}}`, `{{CODE_REPO}}`, and `{{BLOG_LINK}}`
 
+## 🔌 Supported Model Providers
+
+The pipeline supports multiple AI providers, giving you flexibility for cost, compliance, and model preferences:
+
+| Provider | Best For | Auth Method | Setup Guide |
+|----------|----------|-------------|-------------|
+| **Anthropic Direct** ⭐ | Quick start, latest models | API Key | [Get API Key](https://console.anthropic.com/) |
+| **AWS Bedrock** 🏢 | Enterprise, compliance, AWS billing | API Key or IAM | [Generate API Key](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html) |
+| **OpenAI** 💰 | Cost optimization, GPT models | API Key | [Get API Key](https://platform.openai.com/api-keys) |
+| **Ollama** 🏠 | Local, private, offline | None (local) | [Install Ollama](https://ollama.com) |
+
+### 💡 Cost Optimization Strategy
+
+Mix and match providers per agent to optimize costs:
+
+```yaml
+# Example: Ultra-low-cost preprocessing
+preprocessor_agent:
+  provider: openai          # GPT-4o-mini @ $0.15/$0.60 per M tokens
+  model_id: gpt-4o-mini     # ~$0.01/video (60-75% savings!)
+
+# Best quality content generation
+content_agents:
+  provider: anthropic       # Claude Sonnet 4.5 @ $3/$15 per M tokens
+  model_id: claude-sonnet-4-5-20250929
+
+# Enterprise governance
+rating_agent:
+  provider: bedrock         # AWS Bedrock with guardrails
+  model_id: claude-haiku-4-5-20251001
+```
+
+**Potential savings:** Save 60-75% on preprocessing costs while maintaining premium content quality!
+
 ## ⚙️ Model Configuration
-
-The pipeline uses a flexible model configuration system that supports multiple AI providers:
-
-**Supported Providers:**
-- **Anthropic** (Claude) - Default, best quality
-- **OpenAI** (GPT models)
-- **Ollama** (Local models)
 
 **Configuration File:** `config/models.yaml`
 
 ```yaml
-pipeline_agent:      # Main orchestration agent
+# Default configuration (Anthropic for all agents)
+pipeline_agent:
   provider: anthropic
   model_id: claude-sonnet-4-5-20250929
+  max_tokens: 64000
+  temperature: 1.0
 
-content_agents:      # YouTube, LinkedIn, Twitter generators
+content_agents:
   provider: anthropic
   model_id: claude-sonnet-4-5-20250929
+  max_tokens: 8000
 
-rating_agent:        # Content quality rating
+preprocessor_agent:
   provider: anthropic
-  model_id: claude-sonnet-4-5-20250929
+  model_id: claude-haiku-4-5-20251001
+  max_tokens: 64000
 ```
+
+See `config/models.yaml` for cost optimization examples and all available options.
 
 **CLI Overrides:**
 ```bash
 # Use OpenAI for content generation
-python run_pipeline.py --content-provider openai --content-model gpt-4
+python run_pipeline.py --content-provider openai --content-model gpt-4o-mini
 
-# Mix providers (Anthropic for pipeline, Ollama for content)
-python run_pipeline.py --pipeline-provider anthropic --content-provider ollama --content-model qwen3:4b
+# Mix providers (Anthropic for pipeline, Bedrock for content)
+python run_pipeline.py --pipeline-provider anthropic --content-provider bedrock
 ```
 
 ## 🚀 Quick Start
@@ -317,10 +351,11 @@ python run_pipeline.py --pipeline-provider anthropic --content-provider ollama -
 ### Prerequisites
 
 - Python 3.9+
-- **At least one AI provider API key:**
-  - Anthropic API key (recommended)
-  - OpenAI API key (optional)
-  - Ollama installed locally (optional)
+- **At least one AI provider:**
+  - **Anthropic** API key (recommended - default)
+  - **AWS Bedrock** API key or IAM credentials (enterprise)
+  - **OpenAI** API key (cost optimization)
+  - **Ollama** installed locally (free, private)
 - FFmpeg (for audio processing - auto-installed with dependencies)
 
 **Note**: Video transcription runs locally using Whisper - no API costs!
@@ -334,17 +369,76 @@ cd content-copy-pipeline
 pip install -r requirements.txt
 ```
 
-2. **Configure API keys:**
-```bash
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY (or OPENAI_API_KEY)
-```
-
-3. **Add your videos:**
+2. **Add your videos:**
 ```bash
 mkdir -p videos
 # Copy your video files to ./videos/
 ```
+
+### 🔑 Provider Setup
+
+Choose one or more providers based on your needs:
+
+<details>
+<summary><b>Anthropic Direct API</b> (Default - Recommended for Getting Started) ⭐</summary>
+
+1. Get your API key: https://console.anthropic.com/
+2. Set environment variable:
+   ```bash
+   export ANTHROPIC_API_KEY="your-key-here"
+   ```
+3. You're done! This is the default provider.
+
+</details>
+
+<details>
+<summary><b>AWS Bedrock API</b> (Best for Enterprise) 🏢</summary>
+
+**Quick Setup with API Keys:**
+1. [Generate a Bedrock API key](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-generate.html) in AWS Console
+2. Set environment variables:
+   ```bash
+   export BEDROCK_API_KEY="your-bedrock-key"
+   export AWS_REGION="us-west-2"  # Your preferred region
+   ```
+3. Update `config/models.yaml` to use `provider: bedrock`
+
+**Alternative: IAM Credentials** (for production)
+- Configure AWS credentials via `aws configure`
+- Requires `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` permissions
+- See [Bedrock authentication docs](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html)
+
+**Note:** Bedrock uses different model IDs (e.g., `anthropic.claude-sonnet-4-20250514-v1:0`). The pipeline automatically maps unified model IDs to provider-specific formats.
+
+</details>
+
+<details>
+<summary><b>OpenAI API</b> (Best for Cost Optimization) 💰</summary>
+
+1. Get your API key: https://platform.openai.com/api-keys
+2. Set environment variable:
+   ```bash
+   export OPENAI_API_KEY="your-openai-key"
+   ```
+3. Update `config/models.yaml` to use `provider: openai`
+
+**Cost Tip:** Use `gpt-4o-mini` for preprocessing to save 60-75% compared to Claude!
+
+</details>
+
+<details>
+<summary><b>Ollama (Local Models)</b> (Best for Privacy) 🏠</summary>
+
+1. Install Ollama: https://ollama.com/download
+2. Pull a model:
+   ```bash
+   ollama pull llama3.1
+   ```
+3. Update `config/models.yaml` to use `provider: ollama`
+
+**Benefits:** Free, private, works offline. No API keys needed!
+
+</details>
 
 ### Basic Usage
 

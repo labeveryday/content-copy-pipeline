@@ -1,7 +1,19 @@
 # Model Configuration for Content Pipeline
 #
 # Configure different models for different agent types.
-# Supports: anthropic, openai, ollama providers
+# Supports: anthropic, bedrock, openai, ollama providers
+#
+# PROVIDER OPTIONS:
+# - anthropic: Direct Anthropic API (default, simplest setup)
+# - bedrock: AWS Bedrock (enterprise, compliance, unified AWS billing)
+# - openai: OpenAI API (cost optimization, GPT models)
+# - ollama: Local models (free, private, offline)
+#
+# SETUP:
+# - anthropic: Set ANTHROPIC_API_KEY environment variable
+# - bedrock: Set BEDROCK_API_KEY + AWS_REGION, or configure AWS credentials (aws configure)
+# - openai: Set OPENAI_API_KEY environment variable
+# - ollama: Run Ollama locally (ollama serve)
 
 # Main pipeline orchestration agent (handles conversations and custom prompts)
 pipeline_agent:
@@ -27,10 +39,41 @@ rating_agent:
   temperature: 1.0
   thinking: true
 
-# Future: Add transcription model config here
+# Transcript preprocessing agent (fix names, terms, formatting)
+# TIP: Use gpt-4o-mini for 60-75% cost savings on preprocessing!
 preprocessor_agent:
   provider: anthropic
   model_id: claude-haiku-4-5-20251001
   max_tokens: 64000
   temperature: 1.0
   thinking: true
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# COST OPTIMIZATION EXAMPLES
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Example: Ultra-low-cost preprocessing with OpenAI
+# preprocessor_agent:
+#   provider: openai
+#   model_id: gpt-4o-mini
+#   max_tokens: 64000
+#   temperature: 0.7
+
+# Example: AWS Bedrock for enterprise compliance
+# content_agents:
+#   provider: bedrock
+#   model_id: claude-sonnet-4-5-20250929
+#   max_tokens: 8000
+#   temperature: 1.0
+#   thinking: false
+
+# Example: Mix providers for cost optimization
+# preprocessor_agent:
+#   provider: openai         # Cheapest: ~$0.01/video
+#   model_id: gpt-4o-mini
+# content_agents:
+#   provider: anthropic       # Best quality content
+#   model_id: claude-sonnet-4-5-20250929
+# rating_agent:
+#   provider: bedrock         # Enterprise governance
+#   model_id: claude-haiku-4-5-20251001
