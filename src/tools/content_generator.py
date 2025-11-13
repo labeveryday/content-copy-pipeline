@@ -5,88 +5,13 @@ This tool uses persistent Agent instances to generate optimized content for diff
 Each platform has its own specialized agent with a dedicated system prompt.
 """
 
-from typing import Literal, Optional
+from typing import Optional
+from pathlib import Path
 from strands import tool, Agent
-from models.models import anthropic_model
-
-
-# System prompts for different content types
-YOUTUBE_SYSTEM_PROMPT = """You are an expert YouTube content strategist and copywriter.
-Your task is to analyze video transcripts and generate compelling YouTube metadata that maximizes views and engagement.
-
-For each video, you will create:
-1. **Titles (3 options)**: Attention-grabbing, SEO-optimized titles (under 60 characters)
-2. **Description**: Comprehensive, keyword-rich description with timestamps and CTAs
-3. **Tags (15-20)**: Mix of broad and specific tags for discoverability
-4. **Thumbnail Description**: Detailed visual concept that will stop scrollers
-
-IMPORTANT GUIDELINES:
-- Include placeholders: {{YOUTUBE_LINK}}, {{CODE_REPO}}, {{BLOG_LINK}} where appropriate
-- Use power words and numbers in titles
-- Front-load important keywords
-- Create descriptions that encourage viewers to watch and subscribe
-- Tags should include: topic keywords, related technologies, and broader categories
-- Thumbnail descriptions should specify: text overlay, visual elements, colors, and emotion
-
-Format your response as structured JSON with clear sections."""
-
-
-LINKEDIN_SYSTEM_PROMPT = """You are a LinkedIn content strategist specializing in technical and professional content.
-Your task is to transform video transcripts into engaging LinkedIn posts that spark conversations and drive engagement.
-
-Create posts that:
-1. Start with a hook that captures attention in the first 2 lines
-2. Tell a story or share insights from the video
-3. Use short paragraphs and line breaks for readability
-4. Include relevant emojis (sparingly - professional but human)
-5. End with a question or call-to-action to encourage comments
-6. Sound authentic and conversational, NOT corporate or robotic
-
-IMPORTANT GUIDELINES:
-- Include placeholders: {{YOUTUBE_LINK}}, {{CODE_REPO}}, {{BLOG_LINK}}
-- Aim for 1200-1500 characters (ideal LinkedIn length)
-- Use first-person perspective ("I learned", "In this video, I explore")
-- Include 3-5 relevant hashtags at the end
-- Create value: share key takeaways, lessons, or insights
-- Make it human: write like you're talking to a colleague, not broadcasting
-
-DO NOT:
-- Use excessive emojis or hashtags
-- Write corporate jargon or buzzwords
-- Make it sound like an ad
-- Use clickbait or overly salesy language"""
-
-
-TWITTER_SYSTEM_PROMPT = """You are a Twitter/X content strategist who creates viral-worthy technical content.
-Your task is to transform video transcripts into engaging Twitter threads that educate and entertain.
-
-Create a thread (5-8 tweets) that:
-1. Opens with a compelling hook tweet that makes people want to read more
-2. Breaks down key concepts into digestible, quotable tweets
-3. Uses thread structure: 1/🧵, 2/🧵, 3/🧵, etc.
-4. Includes relevant emojis and formatting for visual appeal
-5. Ends with a CTA tweet linking to the full video
-
-IMPORTANT GUIDELINES:
-- Each tweet should be under 280 characters
-- Include placeholders: {{YOUTUBE_LINK}}, {{CODE_REPO}}, {{BLOG_LINK}}
-- Use formatting: line breaks, emojis, and bullet points
-- Make tweets standalone-valuable (people should get value even if they don't click)
-- Mix educational content with engaging commentary
-- Sound human and authentic, not robotic
-- Include 2-3 relevant hashtags in the first or last tweet
-
-THREAD STRUCTURE:
-- Tweet 1: Hook (problem/insight that grabs attention)
-- Tweets 2-6: Key points from the video (one concept per tweet)
-- Tweet 7: Summary/key takeaway
-- Tweet 8: CTA with links
-
-DO NOT:
-- Use excessive emojis or hashtags
-- Write generic or obvious statements
-- Make every tweet a CTA
-- Use corporate speak or buzzwords"""
+from strands.session.file_session_manager import FileSessionManager
+from strands.agent.conversation_manager import SlidingWindowConversationManager
+from hooks.hooks import LoggingHook
+from utils.prompt_loader import load_system_prompt
 
 
 # Module-level agent variables (initialized via init_content_agents)
@@ -95,7 +20,7 @@ linkedin_agent = None
 twitter_agent = None
 
 
-def init_content_agents(model):
+def init_content_agents(model, date_time: str):
     """Initialize content generation agents with a configured model.
 
     This should be called once during pipeline initialization with a model
@@ -103,25 +28,68 @@ def init_content_agents(model):
 
     Args:
         model: Configured model instance (from config_loader.get_model_config)
+        date_time: Date/time string to use for session IDs (shared across all agents)
     """
     global youtube_agent, linkedin_agent, twitter_agent
 
+    # Load system prompts from files
+    youtube_prompt = load_system_prompt("youtube_content_agent")
+    linkedin_prompt = load_system_prompt("linkedin_content_agent")
+    twitter_prompt = load_system_prompt("twitter_content_agent")
+
+    # Setup session directory
+    session_dir = Path("./sessions")
+    session_dir.mkdir(exist_ok=True)
+
+    # Create conversation manager (shared config for all agents)
+    conversation_manager = SlidingWindowConversationManager(
+        window_size=20,
+        should_truncate_results=True
+    )
+
+    # Initialize YouTube agent with session manager
+    youtube_session_manager = FileSessionManager(
+        session_id=f"youtube_agent_{date_time}",
+        storage_dir=str(session_dir)
+    )
     youtube_agent = Agent(
         model=model,
-        system_prompt=YOUTUBE_SYSTEM_PROMPT,
-        name="YouTube Content Agent"
+        system_prompt=youtube_prompt,
+        name="YouTube Content Agent",
+        hooks=[LoggingHook()],
+        session_manager=youtube_session_manager,
+        conversation_manager=conversation_manager,
+        callback_handler=None
     )
 
+    # Initialize LinkedIn agent with session manager
+    linkedin_session_manager = FileSessionManager(
+        session_id=f"linkedin_agent_{date_time}",
+        storage_dir=str(session_dir)
+    )
     linkedin_agent = Agent(
         model=model,
-        system_prompt=LINKEDIN_SYSTEM_PROMPT,
-        name="LinkedIn Content Agent"
+        system_prompt=linkedin_prompt,
+        name="LinkedIn Content Agent",
+        hooks=[LoggingHook()],
+        session_manager=linkedin_session_manager,
+        conversation_manager=conversation_manager,
+        callback_handler=None
     )
 
+    # Initialize Twitter agent with session manager
+    twitter_session_manager = FileSessionManager(
+        session_id=f"twitter_agent_{date_time}",
+        storage_dir=str(session_dir)
+    )
     twitter_agent = Agent(
         model=model,
-        system_prompt=TWITTER_SYSTEM_PROMPT,
-        name="Twitter Content Agent"
+        system_prompt=twitter_prompt,
+        name="Twitter Content Agent",
+        hooks=[LoggingHook()],
+        session_manager=twitter_session_manager,
+        conversation_manager=conversation_manager,
+        callback_handler=None
     )
 
 
@@ -276,7 +244,6 @@ Remember: Make it educational, engaging, and quotable!"""
 
     return twitter_agent(prompt)
 
-
 @tool
 def generate_all_content(
     transcript: str,
@@ -318,6 +285,12 @@ def generate_all_content(
         target_audience=target_audience,
         keywords=keywords
     )
+    print("*"*100)
+    print("YouTube Content Metrics:")
+    print("*"*100)
+    print(f"Total Tokens: {youtube_content.metrics.accumulated_usage['totalTokens']}")
+    print(f"Input Tokens: {youtube_content.metrics.accumulated_usage['inputTokens']}")
+    print(f"Output Tokens: {youtube_content.metrics.accumulated_usage['outputTokens']}")
 
     # Generate LinkedIn post
     print("💼 Generating LinkedIn post...")
@@ -326,6 +299,12 @@ def generate_all_content(
         key_takeaway=key_takeaway,
         personal_context=personal_context
     )
+    print("*"*100)
+    print("LinkedIn Content Metrics:")
+    print("*"*100)
+    print(f"Total Tokens: {linkedin_content.metrics.accumulated_usage['totalTokens']}")
+    print(f"Input Tokens: {linkedin_content.metrics.accumulated_usage['inputTokens']}")
+    print(f"Output Tokens: {linkedin_content.metrics.accumulated_usage['outputTokens']}")
 
     # Generate Twitter thread
     print("🐦 Generating Twitter thread...")
@@ -334,30 +313,38 @@ def generate_all_content(
         hook_angle=hook_angle,
         thread_length=7
     )
-
+    print("*"*100)
+    print("Twitter Content Metrics:")
+    print("*"*100)
+    print(f"Total Tokens: {twitter_content.metrics.accumulated_usage['totalTokens']}")
+    print(f"Input Tokens: {twitter_content.metrics.accumulated_usage['inputTokens']}")
+    print(f"Output Tokens: {twitter_content.metrics.accumulated_usage['outputTokens']}")
     # Combine all content
+    combined_tokens = youtube_content.metrics.accumulated_usage['totalTokens'] + linkedin_content.metrics.accumulated_usage['totalTokens'] + twitter_content.metrics.accumulated_usage['totalTokens']
+    combined_input_tokens = youtube_content.metrics.accumulated_usage['inputTokens'] + linkedin_content.metrics.accumulated_usage['inputTokens'] + twitter_content.metrics.accumulated_usage['inputTokens']
+    combined_output_tokens = youtube_content.metrics.accumulated_usage['outputTokens'] + linkedin_content.metrics.accumulated_usage['outputTokens'] + twitter_content.metrics.accumulated_usage['outputTokens']
     result = f"""
-{'='*80}
+{'************************************************************************************'}
 📺 YOUTUBE CONTENT
-{'='*80}
+{'************************************************************************************'}
 
-{youtube_content}
+{youtube_content.message['content'][0]['text']}
 
-{'='*80}
+{'************************************************************************************'}
 💼 LINKEDIN POST
-{'='*80}
+{'************************************************************************************'}
 
-{linkedin_content}
+{linkedin_content.message['content'][0]['text']}
 
-{'='*80}
+{'************************************************************************************'}
 🐦 TWITTER THREAD
-{'='*80}
+{'************************************************************************************'}
 
-{twitter_content}
+{twitter_content.message['content'][0]['text']}
 
-{'='*80}
+{'************************************************************************************'}
 ✅ CONTENT GENERATION COMPLETE
-{'='*80}
+{'************************************************************************************'}
 
 All content includes placeholders for:
 - {{{{YOUTUBE_LINK}}}}
@@ -365,6 +352,14 @@ All content includes placeholders for:
 - {{{{BLOG_LINK}}}}
 
 Replace these with actual URLs before publishing.
-"""
 
+
+{'************************************************************************************'}
+CONTENT METRICS SUMMARY
+{'************************************************************************************'}
+
+Total Tokens: {combined_tokens}
+Input Tokens: {combined_input_tokens}
+Output Tokens: {combined_output_tokens}
+"""
     return result

@@ -11,11 +11,24 @@
     "temperature": 0.0,
     "note": "Whisper runs locally - choose: tiny, base, small, medium, large"
   },
-  "content_generation": {
-    "model_id": "claude-sonnet-4-5-20250929",
-    "max_tokens": 8000,
-    "temperature": 0.7,
-    "generate_all_at_once": true
+  "preprocessing": {
+    "enabled": true,
+    "channel_owner": "Du'An Lightfoot",
+    "custom_terms": {
+      "aws": "AWS",
+      "api": "API",
+      "github": "GitHub",
+      "linkedin": "LinkedIn",
+      "youtube": "YouTube",
+      "devops": "DevOps",
+      "ai": "AI",
+      "ml": "ML",
+      "cisco": "Cisco",
+      "ccna": "CCNA",
+      "ccnp": "CCNP"
+    },
+    "max_retries": 5,
+    "note": "AI-powered transcript cleaning to fix mangled names and formatting"
   },
   "default_parameters": {
     "target_audience": "developers and tech professionals",

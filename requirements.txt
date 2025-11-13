@@ -6,6 +6,7 @@ strands-agents[openai]
 strands-agents[writer]
 strands-agents[ollama]
 python-dotenv
+anthropic
 
 # Local Whisper for transcription
 openai-whisper

@@ -4,12 +4,14 @@ Content Copy Pipeline
 Main pipeline script that orchestrates video transcription and content generation.
 This pipeline:
 1. Scans a directory for video files
-2. Transcribes videos using OpenAI Whisper
-3. Uses AI agents to generate platform-specific content (YouTube, LinkedIn, Twitter)
-4. Saves all generated content to organized output files
+2. Transcribes videos using OpenAI Whisper (local)
+3. Preprocesses transcripts with AI to fix names and formatting (optional)
+4. Uses AI agents to generate platform-specific content (YouTube, LinkedIn, Twitter)
+5. Saves all generated content to organized output files
 """
-
 import os
+from pydantic import BaseModel, Field
+
 import json
 from pathlib import Path
 from datetime import datetime
@@ -18,27 +20,41 @@ from dotenv import load_dotenv
 
 from strands import Agent
 from strands.session.file_session_manager import FileSessionManager
+from strands_tools import journal
 from strands.agent.conversation_manager import SlidingWindowConversationManager
+from hooks.hooks import LoggingHook
 
-from config_loader import load_config, get_model_config
+from config_loader import load_config, get_model_config, load_preprocessing_config
 from transcriber import VideoTranscriber
+from preprocessor import TranscriptPreprocessor
+from utils.pricing import calculate_cost
+from utils.prompt_loader import load_system_prompt
 from tools.content_generator import (
-    generate_youtube_content,
-    generate_linkedin_post,
-    generate_twitter_thread,
     generate_all_content,
     init_content_agents
 )
 
 from tools.content_rater import (
     rate_content,
-    rate_platform_content,
-    compare_content_versions,
     init_rating_agent
 )
 
 # Load environment variables
 load_dotenv()
+
+DATE_TIME = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+class ContentResult(BaseModel):
+    """Result of the content generation."""
+    youtube_content: str = Field(description="The content for the YouTube video")
+    linkedin_content: str = Field(description="The content for the LinkedIn post")
+    twitter_content: str = Field(description="The content for the Twitter thread")
+    content_generation_complete: bool = Field(description="Whether the content generation is complete")
+    total_tokens: int = Field(description="The total number of tokens used")
+    input_tokens: int = Field(description="The number of input tokens used")
+    output_tokens: int = Field(description="The number of output tokens used")
+    content_rating: str = Field(description="The rating and feedback of the content")
 
 
 class ContentPipeline:
@@ -52,7 +68,8 @@ class ContentPipeline:
         whisper_model: str = "base",
         verbose: bool = True,
         rating_only: bool = False,
-        config_overrides: Optional[dict] = None
+        config_overrides: Optional[dict] = None,
+        preprocessing_overrides: Optional[dict] = None
     ):
         """
         Initialize the Content Pipeline.
@@ -66,6 +83,8 @@ class ContentPipeline:
             rating_only: If True, skip transcriber initialization (for rating mode)
             config_overrides: Optional dict of config overrides per agent type
                 Example: {'pipeline_agent': {'provider': 'openai'}}
+            preprocessing_overrides: Optional dict of preprocessing overrides
+                Example: {'enabled': False} or {'channel_owner': 'Different Name'}
         """
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
@@ -82,22 +101,66 @@ class ContentPipeline:
             self.transcriber = VideoTranscriber(model_size=whisper_model)
         else:
             self.transcriber = None
+        
+        # Load preprocessing configuration from config.json
+        preprocessing_config = load_preprocessing_config(
+            cli_overrides=preprocessing_overrides
+        )
+        self.enable_preprocessing = preprocessing_config.get('enabled', True)
+        
+        # Initialize preprocessor (skip if rating only or disabled)
+        if not rating_only and self.enable_preprocessing:
+            # Load model configurations
+            config = load_config()
+            preprocessor_model, preprocessor_model_id = get_model_config(
+                'preprocessor_agent', config,
+                config_overrides.get('preprocessor_agent') if config_overrides else None,
+                return_model_id=True
+            )
+            self.preprocessor_model_id = preprocessor_model_id
+            
+            self.preprocessor = TranscriptPreprocessor(
+                custom_terms=preprocessing_config.get('custom_terms'),
+                channel_owner=preprocessing_config.get('channel_owner'),
+                model=preprocessor_model,
+                model_id=preprocessor_model_id,
+                max_retries=preprocessing_config.get('max_retries', 5),
+                date_time=DATE_TIME
+            )
+        else:
+            self.preprocessor = None
+            self.preprocessor_model_id = None
 
         # Load model configurations
         config = load_config()
 
         # Initialize specialized content and rating agents
-        content_model = get_model_config('content_agents', config,
-                                        config_overrides.get('content_agents') if config_overrides else None)
-        rating_model = get_model_config('rating_agent', config,
-                                       config_overrides.get('rating_agent') if config_overrides else None)
+        content_model, content_model_id = get_model_config(
+            'content_agents', config,
+            config_overrides.get('content_agents') if config_overrides else None,
+            return_model_id=True
+        )
+        rating_model, rating_model_id = get_model_config(
+            'rating_agent', config,
+            config_overrides.get('rating_agent') if config_overrides else None,
+            return_model_id=True
+        )
 
-        init_content_agents(content_model)
-        init_rating_agent(rating_model)
+        # Store model IDs for accurate cost calculations
+        self.content_model_id = content_model_id
+        self.rating_model_id = rating_model_id
+
+        # Pass DATE_TIME to all agent initialization functions
+        init_content_agents(content_model, DATE_TIME)
+        init_rating_agent(rating_model, DATE_TIME)
 
         # Initialize pipeline orchestration agent
-        pipeline_model = get_model_config('pipeline_agent', config,
-                                         config_overrides.get('pipeline_agent') if config_overrides else None)
+        pipeline_model, pipeline_model_id = get_model_config(
+            'pipeline_agent', config,
+            config_overrides.get('pipeline_agent') if config_overrides else None,
+            return_model_id=True
+        )
+        self.pipeline_model_id = pipeline_model_id
         self._init_agent(pipeline_model)
 
     def _init_agent(self, model):
@@ -107,7 +170,7 @@ class ContentPipeline:
             model: Configured model instance from config system
         """
         # Setup session management
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_id = f"orchestrator_{DATE_TIME}"
         session_dir = Path("./sessions")
         session_dir.mkdir(exist_ok=True)
 
@@ -117,31 +180,27 @@ class ContentPipeline:
         )
 
         conversation_manager = SlidingWindowConversationManager(
-            window_size=10,
+            window_size=20,
             should_truncate_results=True
         )
 
+        # Load system prompt from file
+        orchestrator_prompt = load_system_prompt("pipeline_orchestrator")
+
         # Create pipeline orchestration agent with content generation and rating tools
         self.agent = Agent(
-            model=model,
-            tools=[
-                generate_youtube_content,
-                generate_linkedin_post,
-                generate_twitter_thread,
-                generate_all_content,
-                rate_content,
-                rate_platform_content,
-                compare_content_versions
-            ],
-            session_manager=session_manager,
-            conversation_manager=conversation_manager,
-            name="Content Pipeline Agent",
-            system_prompt="""You are a content creation specialist that helps generate
-            optimized social media content from video transcripts. You have access to
-            specialized tools for creating YouTube, LinkedIn, and Twitter content.
-
-            You can also handle custom requests and have conversational interactions
-            to refine content based on user feedback."""
+        model=model,
+        tools=[
+            generate_all_content,
+            rate_content,
+            journal
+        ],
+        structured_output_model=ContentResult,
+        session_manager=session_manager,
+        conversation_manager=conversation_manager,
+        name="Content Pipeline Agent",
+        hooks=[LoggingHook()],
+        system_prompt=orchestrator_prompt
         )
 
     def process_video(
@@ -183,86 +242,179 @@ class ContentPipeline:
             print("📝 Step 1: Transcribing video...")
 
         transcript_result = self.transcriber.transcribe_video(
-            video_path=video_path
+            video_path=video_path,
+            output_dir=self.transcripts_dir
         )
 
-        transcript_text = transcript_result["text"]
+        raw_transcript = transcript_result["text"]
 
-        # Save transcript
-        transcript_file = self.transcripts_dir / f"{video_path.stem}_transcript.txt"
-        with open(transcript_file, "w", encoding="utf-8") as f:
-            f.write(transcript_text)
+        # Save raw transcript only if it wasn't loaded from cache
+        if not transcript_result.get("from_cache", False):
+            raw_transcript_file = self.transcripts_dir / f"{video_path.stem}_transcript.txt"
+            with open(raw_transcript_file, "w", encoding="utf-8") as f:
+                f.write(raw_transcript)
 
+            if self.verbose:
+                print(f"✅ Raw transcript saved: {raw_transcript_file}")
+                print(f"   Length: {len(raw_transcript)} characters\n")
+        else:
+            raw_transcript_file = self.transcripts_dir / f"{video_path.stem}_transcript.txt"
+            if self.verbose:
+                print()
+
+        # Step 2: Preprocess transcript (if enabled)
+        preprocessing_result = None
+        cleaned_transcript_file = None
+        
+        if self.enable_preprocessing and self.preprocessor:
+            if self.verbose:
+                print("🧹 Step 2: Preprocessing transcript with AI...")
+
+            preprocessing_result = self.preprocessor.process(raw_transcript)
+            
+            if preprocessing_result.error:
+                if self.verbose:
+                    print(f"⚠️  Preprocessing failed: {preprocessing_result.error}")
+                    print(f"   Using raw transcript instead\n")
+                transcript_text = raw_transcript
+            else:
+                transcript_text = preprocessing_result.cleaned_text
+                
+                # Save cleaned transcript
+                cleaned_transcript_file = self.transcripts_dir / f"{video_path.stem}_transcript_cleaned.txt"
+                with open(cleaned_transcript_file, "w", encoding="utf-8") as f:
+                    f.write(transcript_text)
+                
+                if self.verbose:
+                    print(f"✅ Cleaned transcript saved: {cleaned_transcript_file}")
+                    print(f"   Original: {preprocessing_result.original_length:,} characters")
+                    print(f"   Cleaned: {preprocessing_result.cleaned_length:,} characters")
+                    print(f"   Total Tokens: {preprocessing_result.tokens_used:,}")
+                    print(f"   Input Tokens: {preprocessing_result.input_tokens:,}")
+                    print(f"   Output Tokens: {preprocessing_result.output_tokens:,}")
+                    print(f"   Total Cost: ${preprocessing_result.cost:.4f}")
+                    print(f"   Input Cost: ${preprocessing_result.input_cost:.4f}")
+                    print(f"   Output Cost: ${preprocessing_result.output_cost:.4f}")
+                    if preprocessing_result.retries > 0:
+                        print(f"   Retries: {preprocessing_result.retries}")
+                    print()
+        else:
+            transcript_text = raw_transcript
+            if self.verbose and self.enable_preprocessing:
+                print("⚠️  Preprocessing skipped (preprocessor not initialized)\n")
+
+        # Step 3: Generate content
         if self.verbose:
-            print(f"✅ Transcript saved: {transcript_file}")
-            print(f"   Length: {len(transcript_text)} characters\n")
-
-        # Step 2: Generate content
-        if self.verbose:
-            print("🤖 Step 2: Generating social media content...")
+            print("🤖 Step 3: Generating social media content...")
 
         if generate_all:
             # Generate all content at once
             prompt = f"""Generate content for all platforms based on this video transcript.
 
-Video: {video_title or video_path.stem}
-{f'Target Audience: {target_audience}' if target_audience else ''}
-{f'Keywords: {keywords}' if keywords else ''}
-{f'Key Takeaway: {key_takeaway}' if key_takeaway else ''}
-{f'Personal Context: {personal_context}' if personal_context else ''}
-{f'Hook Angle: {hook_angle}' if hook_angle else ''}
+        Video: {video_title or video_path.stem}
+        {f'Target Audience: {target_audience}' if target_audience else ''}
+        {f'Keywords: {keywords}' if keywords else ''}
+        {f'Key Takeaway: {key_takeaway}' if key_takeaway else ''}
+        {f'Personal Context: {personal_context}' if personal_context else ''}
+        {f'Hook Angle: {hook_angle}' if hook_angle else ''}
 
-Use the generate_all_content tool with this transcript:
+        Transcript:
+        {transcript_text}
+        """
 
-{transcript_text}
-"""
+            agent_response = self.agent(prompt)
+            
+            # Extract structured content
+            content_result = agent_response.structured_output
+            
+            # Add orchestrator's own token usage to the totals
+            # Note: content_result tokens are from content_agents (YouTube, LinkedIn, Twitter)
+            # agent_response tokens are from pipeline_agent (orchestrator)
+            orchestrator_input = agent_response.metrics.accumulated_usage['inputTokens']
+            orchestrator_output = agent_response.metrics.accumulated_usage['outputTokens']
+            
+            content_result.total_tokens += agent_response.metrics.accumulated_usage['totalTokens']
+            content_result.input_tokens += orchestrator_input
+            content_result.output_tokens += orchestrator_output
+            
+            # Calculate costs separately for content agents and pipeline agent
+            # Content agents did the actual content generation
+            content_input_cost, content_output_cost, content_total_cost = calculate_cost(
+                input_tokens=content_result.input_tokens - orchestrator_input,
+                output_tokens=content_result.output_tokens - orchestrator_output,
+                model_id=self.content_model_id
+            )
+            
+            # Pipeline agent did the orchestration
+            pipeline_input_cost, pipeline_output_cost, pipeline_total_cost = calculate_cost(
+                input_tokens=orchestrator_input,
+                output_tokens=orchestrator_output,
+                model_id=self.pipeline_model_id
+            )
+            
+            # Combined cost
+            input_cost = content_input_cost + pipeline_input_cost
+            output_cost = content_output_cost + pipeline_output_cost
+            total_cost = content_total_cost + pipeline_total_cost
 
-            content_result = self.agent(prompt)
+            # Format for display/saving
+            formatted_content = f"""
+        {'='*80}
+        📺 YOUTUBE CONTENT
+        {'='*80}
+
+        {content_result.youtube_content}
+
+        {'='*80}
+        💼 LINKEDIN POST
+        {'='*80}
+
+        {content_result.linkedin_content}
+
+        {'='*80}
+        🐦 TWITTER THREAD
+        {'='*80}
+
+        {content_result.twitter_content}
+
+        {'='*80}
+        CONTENT RATING AND FEEDBACK:
+        {'='*80}
+        {content_result.content_rating}
+
+        {'='*80}
+        ✅ CONTENT GENERATION COMPLETE
+        {'='*80}
+
+        METRICS SUMMARY:
+        - Total Tokens: {content_result.total_tokens:,}
+        - Input Tokens: {content_result.input_tokens:,}
+        - Output Tokens: {content_result.output_tokens:,}
+        
+        COST BREAKDOWN:
+        - Content Agents ({self.content_model_id}): ${content_total_cost:.4f}
+        - Pipeline Agent ({self.pipeline_model_id}): ${pipeline_total_cost:.4f}
+        - Total Cost: ${total_cost:.4f}
+        """
 
         else:
             # Generate content for each platform separately
-            youtube_prompt = f"Generate YouTube content for this transcript:\n\n{transcript_text}"
-            linkedin_prompt = f"Generate a LinkedIn post for this transcript:\n\n{transcript_text}"
-            twitter_prompt = f"Generate a Twitter thread for this transcript:\n\n{transcript_text}"
+            exit("Failed to implement content generation for each platform separately")
 
-            youtube_content = self.agent(youtube_prompt)
-            linkedin_content = self.agent(linkedin_prompt)
-            twitter_content = self.agent(twitter_prompt)
-
-            content_result = f"""
-{'='*80}
-📺 YOUTUBE CONTENT
-{'='*80}
-
-{youtube_content}
-
-{'='*80}
-💼 LINKEDIN POST
-{'='*80}
-
-{linkedin_content}
-
-{'='*80}
-🐦 TWITTER THREAD
-{'='*80}
-
-{twitter_content}
-"""
-
-        # Step 3: Save generated content
+        # Step 4: Save generated content
         output_file = self.output_dir / f"{video_path.stem}_content.txt"
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(f"Video: {video_path.name}\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"{'='*80}\n\n")
-            f.write(str(content_result))
+            f.write(formatted_content)
 
         # Save metadata as JSON
         metadata_file = self.output_dir / f"{video_path.stem}_metadata.json"
         metadata = {
             "video_file": str(video_path),
             "video_name": video_path.name,
-            "transcript_file": str(transcript_file),
+            "raw_transcript_file": str(raw_transcript_file),
             "content_file": str(output_file),
             "transcript_length": len(transcript_text),
             "generated_at": datetime.now().isoformat(),
@@ -276,24 +428,84 @@ Use the generate_all_content tool with this transcript:
             }
         }
 
+        # Add content generation metrics if structured output was used
+        if generate_all and content_result:
+            metadata["content_generation"] = {
+                "total_tokens": content_result.total_tokens,
+                "input_tokens": content_result.input_tokens,
+                "output_tokens": content_result.output_tokens,
+                "total_cost": total_cost,
+                "input_cost": input_cost,
+                "output_cost": output_cost,
+                "cost_breakdown": {
+                    "content_agents": {
+                        "model": self.content_model_id,
+                        "cost": content_total_cost,
+                        "input_cost": content_input_cost,
+                        "output_cost": content_output_cost
+                    },
+                    "pipeline_agent": {
+                        "model": self.pipeline_model_id,
+                        "cost": pipeline_total_cost,
+                        "input_cost": pipeline_input_cost,
+                        "output_cost": pipeline_output_cost
+                    }
+                },
+                "success": content_result.content_generation_complete
+            }
+
+        # Add preprocessing info if it was used
+        if preprocessing_result and not preprocessing_result.error:
+            metadata["preprocessing"] = {
+                "enabled": True,
+                "model": self.preprocessor_model_id if self.preprocessor else None,
+                "cleaned_transcript_file": str(cleaned_transcript_file),
+                "original_length": preprocessing_result.original_length,
+                "cleaned_length": preprocessing_result.cleaned_length,
+                "total_tokens": preprocessing_result.tokens_used,
+                "input_tokens": preprocessing_result.input_tokens,
+                "output_tokens": preprocessing_result.output_tokens,
+                "total_cost": preprocessing_result.cost,
+                "input_cost": preprocessing_result.input_cost,
+                "output_cost": preprocessing_result.output_cost,
+                "retries": preprocessing_result.retries
+            }
+        else:
+            metadata["preprocessing"] = {
+                "enabled": False
+            }
+        
+        # After both preprocessing and content generation
+        pipeline_total_cost = total_cost
+        if preprocessing_result and not preprocessing_result.error:
+            pipeline_total_cost += preprocessing_result.cost
+
+        metadata["total_pipeline_cost"] = pipeline_total_cost
+
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
 
         if self.verbose:
             print(f"✅ Content saved: {output_file}")
-            print(f"✅ Metadata saved: {metadata_file}\n")
+            print(f"✅ Metadata saved: {metadata_file}")
+            print(f"   Preprocessing Cost: ${preprocessing_result.cost:.4f}\n")
+            print(f"   Content Generation Cost: ${total_cost:.4f}\n")
+            print(f"   Total Pipeline Cost: ${pipeline_total_cost:.4f}\n")
             print(f"{'='*80}")
             print(f"✨ Processing complete for: {video_path.name}")
             print(f"{'='*80}\n")
 
         return {
             "video_file": str(video_path),
-            "transcript_file": str(transcript_file),
+            "raw_transcript_file": str(raw_transcript_file),
+            "cleaned_transcript_file": str(cleaned_transcript_file) if cleaned_transcript_file else None,
             "content_file": str(output_file),
             "metadata_file": str(metadata_file),
             "transcript": transcript_text,
-            "content": str(content_result)
+            "content": formatted_content,  # Use formatted_content instead
+            "preprocessing_used": preprocessing_result is not None and not preprocessing_result.error
         }
+
 
     def process_directory(
         self,
@@ -372,8 +584,13 @@ Use the generate_all_content tool with this transcript:
                 f.write("-"*80 + "\n")
                 for r in successful:
                     f.write(f"✅ {Path(r['video_file']).name}\n")
-                    f.write(f"   Transcript: {r['transcript_file']}\n")
-                    f.write(f"   Content: {r['content_file']}\n\n")
+                    f.write(f"   Raw Transcript: {r['raw_transcript_file']}\n")
+                    if r.get('cleaned_transcript_file'):
+                        f.write(f"   Cleaned Transcript: {r['cleaned_transcript_file']}\n")
+                    f.write(f"   Content: {r['content_file']}\n")
+                    if r.get('preprocessing_used'):
+                        f.write(f"   Preprocessing: ✓ Applied\n")
+                    f.write("\n")
 
             if failed:
                 f.write("\nFAILED PROCESSING:\n")
@@ -493,12 +710,14 @@ Content to rate:
 
 def main():
     """Run the content pipeline with example configuration."""
-    # Initialize pipeline
+    # Initialize pipeline (uses config.json for preprocessing settings)
     pipeline = ContentPipeline(
         input_dir="./videos",
         output_dir="./output",
         transcripts_dir="./transcripts",
         verbose=True
+        # Preprocessing settings loaded from config.json
+        # Override with: preprocessing_overrides={'enabled': False}
     )
 
     # Process all videos in the directory

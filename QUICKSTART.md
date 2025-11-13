@@ -36,22 +36,45 @@ python run_pipeline.py --video videos/my-video.mp4
 ```
 
 This will:
-1. Transcribe the video locally (free, using Whisper)
-2. Generate optimized content for YouTube, LinkedIn, and Twitter
-3. Save everything to `output/`
+1. **Transcribe** the video locally (free, using Whisper)
+2. **Preprocess** the transcript with AI (fixes mangled names, adds punctuation)
+3. **Generate** optimized content for YouTube, LinkedIn, and Twitter
+4. Save everything to `output/`
 
 **Output files:**
 - `output/my-video_content.txt` - All platform content
-- `output/my-video_metadata.json` - Processing details
-- `transcripts/my-video_transcript.txt` - Full transcript
+- `output/my-video_metadata.json` - Processing details & costs
+- `transcripts/my-video_transcript.txt` - Raw Whisper transcript
+- `transcripts/my-video_transcript_cleaned.txt` - AI-cleaned transcript
 
 ### Common Commands
 
-**Custom parameters:**
+**With content parameters:**
 ```bash
-python run_pipeline.py --video my-video.mp4 \
+python run_pipeline.py \
+  --video videos/cto_advisor_1.mp4 \
+  --audience "AI Engineers, Architects, Network Engineers, Developers" \
+  --keywords "AI Agents" \
+  --title "CTO Advisor Episode 1"
+```
+
+**All available flags:**
+```bash
+python run_pipeline.py \
+  --video ./videos/my-video.mp4 \
   --audience "developers" \
-  --keywords "Python,AI,Automation"
+  --keywords "Python,AI,Automation" \
+  --title "Video Title" \
+  --takeaway "Main lesson" \
+  --context "Personal story" \
+  --hook "common mistake" \
+  --channel-owner "Your Name" \
+  --whisper-model base
+```
+
+**Disable preprocessing (use raw transcript):**
+```bash
+python run_pipeline.py --video my-video.mp4 --no-preprocessing
 ```
 
 **Generate custom content:**
@@ -84,13 +107,47 @@ python run_pipeline.py --video my-video.mp4 \
 
 ## Configuration
 
-Edit `config/models.yaml` to change default models:
+### AI Models (`config/models.yaml`)
+
+Edit to change which AI models to use:
 
 ```yaml
+# Content generation
 content_agents:
   provider: anthropic  # or openai, ollama
   model_id: claude-sonnet-4-5-20250929
+
+# Transcript preprocessing  
+preprocessor_agent:
+  provider: anthropic
+  model_id: claude-haiku-4-5-20251001
 ```
+
+### Preprocessing Settings (`config.json`)
+
+Edit to customize transcript cleaning:
+
+```json
+{
+  "preprocessing": {
+    "enabled": true,
+    "channel_owner": "Your Name",
+    "custom_terms": {
+      "aws": "AWS",
+      "api": "API",
+      "github": "GitHub"
+    }
+  }
+}
+```
+
+**What preprocessing does:**
+- Fixes mangled names (e.g., "the one" → "Du'An Lightfoot")
+- Adds proper punctuation and paragraph breaks
+- Fixes technical term capitalization
+- Removes excessive filler words
+
+**Cost:** ~$0.003-$0.02 per 10-minute video (using Claude Haiku)
 
 ## Troubleshooting
 
@@ -107,6 +164,14 @@ pip install openai-whisper
 - First run downloads the Whisper model (~100MB)
 - Use smaller model: `--whisper-model tiny`
 
+**Preprocessing is slow**
+- Default Haiku model is already fast (~2-5 seconds)
+- Disable for faster runs: `--no-preprocessing`
+
+**Names still mangled after preprocessing**
+- Update `channel_owner` in `config.json` with your name
+- Edit `system_prompts/preprocessor_agent.txt` for better instructions
+
 **Ollama hangs**
 - Some Ollama models don't support tool calling well
 - Try: `llama3.1:latest` or `qwen3:4b`
@@ -115,13 +180,41 @@ pip install openai-whisper
 ## What's Next?
 
 - Read the full [README.md](README.md) for advanced features
-- Check [CHANGELOG.md](CHANGELOG.md) for recent updates
+- Check [PREPROCESSING.md](PREPROCESSING.md) for detailed preprocessing guide
+- See [CHANGELOG.md](CHANGELOG.md) for recent updates
 - Explore the architecture diagrams in the README
+
+## Available Flags Reference
+
+**Content Parameters:**
+- `--audience "target audience"` - Who the content is for
+- `--keywords "keyword1,keyword2"` - SEO keywords
+- `--title "Video Title"` - Custom title
+- `--takeaway "main lesson"` - Key insight to emphasize
+- `--context "personal story"` - Personal context
+- `--hook "angle"` - Hook style (e.g., "surprising discovery")
+
+**Preprocessing:**
+- `--no-preprocessing` - Disable AI transcript cleaning
+- `--channel-owner "Name"` - Override channel owner name
+- `--preprocessor-model "model-id"` - Change preprocessing AI model
+- `--preprocessor-provider "provider"` - Change AI provider (anthropic/openai/ollama)
+
+**Models:**
+- `--whisper-model [tiny|base|small|medium|large]` - Transcription quality
+- `--content-model "model-id"` - Content generation model
+- `--pipeline-model "model-id"` - Pipeline orchestration model
+- `--rating-model "model-id"` - Content rating model
+
+**Other:**
+- `--quiet` - Suppress verbose output
+- `--separate` - Generate platforms separately
+- `--prompt "custom prompt"` - Custom AI prompt
 
 ## Getting Help
 
 - Issues: https://github.com/labeveryday/content-copy-pipeline/issues
-- Documentation: See README.md sections on:
-  - Model Configuration
-  - Rating System
-  - Agent Architecture
+- Documentation:
+  - [README.md](README.md) - Full documentation
+  - [PREPROCESSING.md](PREPROCESSING.md) - Transcript preprocessing guide
+  - [SETUP_SUMMARY.md](SETUP_SUMMARY.md) - Configuration guide

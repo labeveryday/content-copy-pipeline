@@ -21,7 +21,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Process all videos in default ./videos directory
+  # Process all videos with default settings (from config.json)
   python run_pipeline.py
 
   # Process a specific video
@@ -30,8 +30,14 @@ Examples:
   # Process videos with custom parameters
   python run_pipeline.py --audience "network engineers" --keywords "AWS,DevOps,Cloud"
 
-  # Process directory with custom paths
-  python run_pipeline.py --input ./my_videos --output ./my_content
+  # Disable preprocessing for this run
+  python run_pipeline.py --no-preprocessing
+
+  # Override channel owner name for preprocessing
+  python run_pipeline.py --channel-owner "Different Name"
+
+  # Use different AI model for preprocessing
+  python run_pipeline.py --preprocessor-model claude-opus-4-20250514
 
   # Rate existing generated content
   python run_pipeline.py --rate output/video_content.txt
@@ -148,6 +154,29 @@ Examples:
         default="base",
         help="Whisper model size for transcription (default: base)"
     )
+    parser.add_argument(
+        "--preprocessor-provider",
+        type=str,
+        choices=["anthropic", "openai", "ollama"],
+        help="AI provider for preprocessor agent (overrides config)"
+    )
+    parser.add_argument(
+        "--preprocessor-model",
+        type=str,
+        help="Model ID for preprocessor agent (overrides config)"
+    )
+
+    # Preprocessing options
+    parser.add_argument(
+        "--no-preprocessing",
+        action="store_true",
+        help="Disable transcript preprocessing (use raw Whisper output)"
+    )
+    parser.add_argument(
+        "--channel-owner",
+        type=str,
+        help="Channel owner name for preprocessing (overrides config)"
+    )
 
     # Custom prompt option
     parser.add_argument(
@@ -253,6 +282,20 @@ Examples:
         if args.rating_model:
             config_overrides['rating_agent']['model_id'] = args.rating_model
 
+    if args.preprocessor_provider or args.preprocessor_model:
+        config_overrides['preprocessor_agent'] = {}
+        if args.preprocessor_provider:
+            config_overrides['preprocessor_agent']['provider'] = args.preprocessor_provider
+        if args.preprocessor_model:
+            config_overrides['preprocessor_agent']['model_id'] = args.preprocessor_model
+
+    # Build preprocessing overrides
+    preprocessing_overrides = {}
+    if args.no_preprocessing:
+        preprocessing_overrides['enabled'] = False
+    if args.channel_owner:
+        preprocessing_overrides['channel_owner'] = args.channel_owner
+
     # Initialize pipeline
     pipeline = ContentPipeline(
         input_dir=args.input,
@@ -260,7 +303,8 @@ Examples:
         transcripts_dir=args.transcripts,
         whisper_model=args.whisper_model,
         verbose=not args.quiet,
-        config_overrides=config_overrides if config_overrides else None
+        config_overrides=config_overrides if config_overrides else None,
+        preprocessing_overrides=preprocessing_overrides if preprocessing_overrides else None
     )
 
     # Prepare generation parameters

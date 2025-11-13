@@ -6,54 +6,20 @@ providing detailed feedback on quality, effectiveness, and areas for improvement
 """
 
 from typing import Optional
+from pathlib import Path
 from strands import tool, Agent
+from strands.session.file_session_manager import FileSessionManager
+from strands.agent.conversation_manager import SlidingWindowConversationManager
+from hooks.hooks import LoggingHook
 from models.models import anthropic_model
-
-
-RATING_SYSTEM_PROMPT = """You are a content strategist. Give SHORT, DIRECT feedback. MAX 400 WORDS TOTAL.
-
-Use this EXACT format:
-
-━━━━━━━━━━━━━━━━━━━━━━━
-YOUTUBE: [X.X/10]
-✓ [strength]
-✓ [strength]
-✗ [issue]
-✗ [issue]
-FIX: [1-2 sentence fix]
-
-LINKEDIN: [X.X/10]
-✓ [strength]
-✓ [strength]
-✗ [issue]
-✗ [issue]
-FIX: [1-2 sentence fix]
-
-TWITTER: [X.X/10]
-✓ [strength]
-✓ [strength]
-✗ [issue]
-✗ [issue]
-FIX: [1-2 sentence fix]
-
-OVERALL: [X.X/10]
-[1 sentence recommendation]
-━━━━━━━━━━━━━━━━━━━━━━━
-
-RULES:
-- Each strength/issue: MAX 10 words
-- Each fix: MAX 2 sentences
-- NO long explanations
-- NO examples or rewrites
-- NO sections beyond this format
-- Target: 300-400 words total"""
+from utils.prompt_loader import load_system_prompt
 
 
 # Module-level rating agent variable (initialized via init_rating_agent)
 rating_agent = None
 
 
-def init_rating_agent(model):
+def init_rating_agent(model, date_time: str):
     """Initialize rating agent with a configured model.
 
     This should be called once during pipeline initialization with a model
@@ -61,13 +27,36 @@ def init_rating_agent(model):
 
     Args:
         model: Configured model instance (from config_loader.get_model_config)
+        date_time: Date/time string to use for session IDs (shared across all agents)
     """
     global rating_agent
 
+    # Load system prompt from file
+    rating_prompt = load_system_prompt("rating_agent")
+
+    # Setup session directory
+    session_dir = Path("./sessions")
+    session_dir.mkdir(exist_ok=True)
+
+    # Create session manager for rating agent
+    rating_session_manager = FileSessionManager(
+        session_id=f"rating_agent_{date_time}",
+        storage_dir=str(session_dir)
+    )
+
+    # Create conversation manager
+    conversation_manager = SlidingWindowConversationManager(
+        window_size=20,
+        should_truncate_results=True
+    )
+
     rating_agent = Agent(
         model=model,
-        system_prompt=RATING_SYSTEM_PROMPT,
-        name="Content Rating Agent"
+        system_prompt=rating_prompt,
+        name="Content Rating Agent",
+        hooks=[LoggingHook()],
+        session_manager=rating_session_manager,
+        conversation_manager=conversation_manager
     )
 
 

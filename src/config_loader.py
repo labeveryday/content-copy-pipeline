@@ -5,6 +5,7 @@ Loads model configurations from YAML file and provides model instances
 with support for CLI overrides.
 """
 
+import json
 import yaml
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -12,6 +13,7 @@ from models import anthropic_model, openai_model, ollama_model
 
 
 DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "config" / "models.yaml"
+DEFAULT_SETTINGS_PATH = Path(__file__).parent.parent / "config.json"
 
 
 def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -36,21 +38,24 @@ def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
 def get_model_config(
     agent_type: str,
     config: Optional[Dict[str, Any]] = None,
-    cli_overrides: Optional[Dict[str, Any]] = None
+    cli_overrides: Optional[Dict[str, Any]] = None,
+    return_model_id: bool = False
 ):
     """Get a configured model instance for a specific agent type.
 
     Args:
         agent_type: Type of agent ('pipeline_agent', 'content_agents', 'rating_agent')
-        config: Configuration dict (loaded from YAML if not provided)
+        config: Configuration dict (loaded from YAML ./config/models.yaml if not provided)
         cli_overrides: Optional CLI overrides for model settings
+        return_model_id: If True, returns tuple of (model, model_id), otherwise just model
 
     Returns:
         Configured model instance (AnthropicModel, OpenAIModel, or OllamaModel)
+        OR tuple of (model, model_id_string) if return_model_id=True
 
     Example:
         >>> model = get_model_config('content_agents')
-        >>> model = get_model_config('pipeline_agent', cli_overrides={'provider': 'openai'})
+        >>> model, model_id = get_model_config('pipeline_agent', return_model_id=True)
     """
     if config is None:
         config = load_config()
@@ -74,7 +79,7 @@ def get_model_config(
 
     # Create model based on provider
     if provider == 'anthropic':
-        return anthropic_model(
+        model = anthropic_model(
             model_id=model_id,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -82,20 +87,24 @@ def get_model_config(
         )
     elif provider == 'openai':
         reasoning_effort = agent_config.get('reasoning_effort', 'medium')
-        return openai_model(
+        model = openai_model(
             model_id=model_id,
             max_tokens=max_tokens,
             temperature=temperature,
             reasoning_effort=reasoning_effort
         )
     elif provider == 'ollama':
-        return ollama_model(
+        model = ollama_model(
             model_id=model_id,
             max_tokens=max_tokens,
             temperature=temperature
         )
     else:
         raise ValueError(f"Unknown provider: {provider}. Must be 'anthropic', 'openai', or 'ollama'")
+    
+    if return_model_id:
+        return model, model_id
+    return model
 
 
 def get_all_models(
@@ -123,3 +132,50 @@ def get_all_models(
         'content_model': get_model_config('content_agents', config, cli_overrides.get('content_agents')),
         'rating_model': get_model_config('rating_agent', config, cli_overrides.get('rating_agent'))
     }
+
+
+def load_preprocessing_config(
+    settings_path: Optional[Path] = None,
+    cli_overrides: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Load preprocessing configuration from config.json.
+    
+    Args:
+        settings_path: Path to config.json (default: ./config.json)
+        cli_overrides: Optional CLI overrides for preprocessing settings
+            Example: {'enabled': False, 'channel_owner': 'Different Name'}
+    
+    Returns:
+        Preprocessing configuration dict with keys:
+        - enabled: bool
+        - channel_owner: Optional[str]
+        - custom_terms: Dict[str, str]
+        - max_retries: int
+    """
+    if settings_path is None:
+        settings_path = DEFAULT_SETTINGS_PATH
+    
+    if not settings_path.exists():
+        # Return defaults if config file doesn't exist
+        config = {
+            'enabled': True,
+            'channel_owner': None,
+            'custom_terms': {},
+            'max_retries': 5
+        }
+    else:
+        with open(settings_path, 'r') as f:
+            full_config = json.load(f)
+        
+        config = full_config.get('preprocessing', {
+            'enabled': True,
+            'channel_owner': None,
+            'custom_terms': {},
+            'max_retries': 5
+        })
+    
+    # Apply CLI overrides
+    if cli_overrides:
+        config.update(cli_overrides)
+    
+    return config

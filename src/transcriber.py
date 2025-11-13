@@ -61,7 +61,9 @@ class VideoTranscriber:
         task: Literal["transcribe", "translate"] = "transcribe",
         initial_prompt: Optional[str] = None,
         temperature: int = 1,
-        verbose: bool = False
+        verbose: bool = False,
+        output_dir: Optional[str | Path] = None,
+        force_retranscribe: bool = False
     ) -> Dict:
         """
         Transcribe a video file using local Whisper model.
@@ -73,6 +75,8 @@ class VideoTranscriber:
             initial_prompt: Optional text to guide the model's style or vocabulary
             temperature: Sampling temperature (0-1). 0 = deterministic, higher = more random
             verbose: Print detailed progress
+            output_dir: Directory to check for/save existing transcripts (default: None)
+            force_retranscribe: Force re-transcription even if transcript exists (default: False)
 
         Returns:
             Dictionary containing the transcript and metadata
@@ -89,6 +93,77 @@ class VideoTranscriber:
                 f"Unsupported file format: {video_path.suffix}. "
                 f"Supported formats: {', '.join(self.supported_formats)}"
             )
+
+        # Check if transcript already exists
+        if output_dir and not force_retranscribe:
+            output_dir = Path(output_dir)
+            transcript_file = output_dir / f"{video_path.stem}_transcript.txt"
+            
+            if transcript_file.exists():
+                print(f"📄 Found existing transcript: {transcript_file.name}")
+                print(f"   Loading transcript from file...")
+                
+                try:
+                    with open(transcript_file, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    
+                    # Parse the header if it exists
+                    lines = content.split('\n')
+                    metadata = {}
+                    text_start_idx = 0
+                    
+                    # Try to extract metadata from header
+                    for i, line in enumerate(lines):
+                        if line.startswith("File:"):
+                            metadata["file_name"] = line.replace("File:", "").strip()
+                        elif line.startswith("Model:"):
+                            metadata["model"] = line.replace("Model:", "").strip()
+                        elif line.startswith("Language:"):
+                            metadata["language"] = line.replace("Language:", "").strip()
+                        elif line.startswith("Duration:"):
+                            duration_str = line.replace("Duration:", "").replace("seconds", "").strip()
+                            try:
+                                metadata["duration"] = float(duration_str)
+                            except ValueError:
+                                pass
+                        elif "=" * 20 in line:  # Found separator
+                            text_start_idx = i + 2  # Skip separator and empty line
+                            break
+                    
+                    # Extract the actual transcript text
+                    if text_start_idx > 0:
+                        transcript_text = '\n'.join(lines[text_start_idx:]).strip()
+                    else:
+                        # No header found, use entire content
+                        transcript_text = content.strip()
+                    
+                    # Build result dictionary
+                    transcript_data = {
+                        "text": transcript_text,
+                        "language": metadata.get("language", "unknown"),
+                        "segments": [],  # Not saved in simple transcript file
+                        "file_name": metadata.get("file_name", video_path.name),
+                        "file_path": str(video_path),
+                        "model": metadata.get("model", "cached"),
+                        "task": task,
+                        "from_cache": True,
+                        "transcript_file": str(transcript_file)
+                    }
+                    
+                    if "duration" in metadata:
+                        transcript_data["duration"] = metadata["duration"]
+                    
+                    print(f"✅ Loaded existing transcript")
+                    print(f"   Length: {len(transcript_text)} characters")
+                    if "duration" in metadata:
+                        print(f"   Duration: {metadata['duration']} seconds")
+                    print(f"   (Use force_retranscribe=True to regenerate)")
+                    
+                    return transcript_data
+                    
+                except Exception as e:
+                    print(f"⚠️  Error reading existing transcript: {e}")
+                    print(f"   Will re-transcribe the video...")
 
         print(f"🎬 Transcribing: {video_path.name}")
         print(f"   Model: {self.model_size}")
@@ -171,11 +246,15 @@ class VideoTranscriber:
                 print(f"Processing {i}/{len(video_files)}")
                 print("-" * 60)
 
+                # Pass output_dir to enable caching check
+                if output_dir:
+                    transcribe_kwargs['output_dir'] = output_dir
+                
                 result = self.transcribe_video(video_file, **transcribe_kwargs)
                 results.append(result)
 
-                # Optionally save transcript to file
-                if output_dir:
+                # Optionally save transcript to file (only if not from cache)
+                if output_dir and not result.get("from_cache", False):
                     output_dir = Path(output_dir)
                     output_dir.mkdir(parents=True, exist_ok=True)
 

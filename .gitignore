@@ -211,3 +211,10 @@ videos/
 output/
 transcripts/
 sessions/
+
+
+CLAUDE.md
+.claude/
+scratch.py
+test_pricing.py
+docs/

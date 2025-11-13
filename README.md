@@ -20,8 +20,12 @@ graph TB
         W[Whisper Model<br/>Local Transcription<br/>No API Required]
     end
 
+    subgraph "AI Preprocessing"
+        P[Preprocessor Agent<br/>Claude Haiku 4.5<br/>Fix Names & Terms]
+    end
+
     subgraph "Agent Orchestration"
-        MA[Main Agent<br/>Pipeline Coordinator<br/>Strands Agent]
+        MA[Pipeline Agent<br/>Coordinator<br/>Strands Agent]
     end
 
     subgraph "Specialized Sub-Agents"
@@ -30,28 +34,39 @@ graph TB
         TW[Twitter Agent<br/>Thread Generation<br/>Viral Optimization]
     end
 
+    subgraph "Quality Assurance"
+        R[Rating Agent<br/>Content Critic<br/>Platform Analysis]
+    end
+
     subgraph Output
         OUT1[📄 video_content.txt<br/>All Platform Content]
-        OUT2[📄 video_transcript.txt<br/>Full Transcript]
-        OUT3[📄 video_metadata.json<br/>Processing Data]
+        OUT2[📄 video_transcript.txt<br/>Raw Transcript]
+        OUT2C[📄 video_transcript_cleaned.txt<br/>Cleaned Transcript]
+        OUT3[📄 video_metadata.json<br/>Costs & Metrics]
     end
 
     V -->|1. Load| W
-    W -->|2. Transcript| MA
-    MA -->|3. Delegate| YT
-    MA -->|3. Delegate| LI
-    MA -->|3. Delegate| TW
-    YT -->|4. Generate| OUT1
-    LI -->|4. Generate| OUT1
-    TW -->|4. Generate| OUT1
+    W -->|2. Transcript| P
+    P -->|3. Clean| MA
+    MA -->|4. Delegate| YT
+    MA -->|4. Delegate| LI
+    MA -->|4. Delegate| TW
+    YT -->|5. Generate| OUT1
+    LI -->|5. Generate| OUT1
+    TW -->|5. Generate| OUT1
+    MA -.->|Optional| R
+    R -.->|6. Rate| OUT1
     W -.->|Save| OUT2
+    P -.->|Save| OUT2C
     MA -.->|Save| OUT3
 
     style W fill:#e1f5e1
+    style P fill:#ffe4e1
     style MA fill:#e3f2fd
     style YT fill:#fff3e0
     style LI fill:#f3e5f5
     style TW fill:#e0f2f1
+    style R fill:#f0f0f0
 ```
 
 ### Agent Architecture Design
@@ -78,37 +93,47 @@ graph TB
    - Privacy-preserving (videos never leave your machine)
    - Supports 5 model sizes: `tiny`, `base`, `small`, `medium`, `large`
 
-2. **Pipeline Orchestration Agent**
+2. **Transcript Preprocessor Agent** ✨ NEW
+   - Built with Strands Agents using Claude Haiku 4.5
+   - **Expertise**: Transcript cleaning, name correction, formatting
+   - **System Prompt**: Context-aware correction rules
+   - **Outputs**: Cleaned transcripts with proper names, terms, and punctuation
+   - **Focus**: Fixing Whisper transcription errors cost-effectively
+   - **Configured via**: `config.json` (enable/disable, custom terms)
+   - **Cost**: ~$0.02-0.08 per video (using efficient Haiku model)
+
+3. **Pipeline Orchestration Agent**
    - Built with [Strands Agents](https://strandsagents.com/latest/)
    - Coordinates the entire workflow
    - Manages session state and conversation history
    - Has access to tools that invoke specialized content and rating agents
    - Supports custom prompts and conversational interactions
+   - **System Prompt**: Loaded from `system_prompts/pipeline_orchestrator.txt`
 
-3. **YouTube Content Agent** (Persistent Instance)
+4. **YouTube Content Agent** (Persistent Instance)
    - **Expertise**: SEO optimization, discoverability, click-through rates
-   - **System Prompt**: Trained on YouTube best practices
+   - **System Prompt**: Loaded from `system_prompts/youtube_content_agent.txt`
    - **Outputs**: 3 title options, rich descriptions, 15-20 tags, thumbnail concepts
    - **Focus**: Front-loading keywords, engagement optimization
    - **Configured via**: `config/models.yaml` or `--content-provider`
 
-4. **LinkedIn Content Agent** (Persistent Instance)
+5. **LinkedIn Content Agent** (Persistent Instance)
    - **Expertise**: Professional engagement, authentic voice
-   - **System Prompt**: Emphasizes conversational tone, NOT corporate speak
+   - **System Prompt**: Loaded from `system_prompts/linkedin_content_agent.txt`
    - **Outputs**: 1200-1500 char posts with hooks, hashtags, CTAs
    - **Focus**: Human authenticity, discussion generation
    - **Configured via**: `config/models.yaml` or `--content-provider`
 
-5. **Twitter Content Agent** (Persistent Instance)
+6. **Twitter Content Agent** (Persistent Instance)
    - **Expertise**: Thread structure, viral mechanics, concise communication
-   - **System Prompt**: Optimized for scrolling behavior and engagement
+   - **System Prompt**: Loaded from `system_prompts/twitter_content_agent.txt`
    - **Outputs**: 5-8 tweet threads with hooks, emojis, thread numbering
    - **Focus**: Quotable tweets, standalone value, clear CTAs
    - **Configured via**: `config/models.yaml` or `--content-provider`
 
-6. **Rating Agent** (Persistent Instance)
+7. **Rating Agent** (Persistent Instance)
    - **Expertise**: Content strategy and quality assessment
-   - **System Prompt**: Expert content critic with platform-specific criteria
+   - **System Prompt**: Loaded from `system_prompts/rating_agent.txt`
    - **Outputs**: Concise 1-page ratings with actionable feedback
    - **Focus**: Platform-specific strengths, weaknesses, and improvements
    - **Configured via**: `config/models.yaml` or `--rating-provider`
@@ -321,8 +346,24 @@ python run_pipeline.py --video my-video.mp4 --content-provider ollama --content-
 
 ### Video Transcription
 - Supports multiple video formats: MP4, MP3, WAV, M4A, WebM, MPEG
-- Generates detailed transcripts with timestamps
+- **Local processing**: Runs entirely on your machine (no API costs)
+- Configurable model sizes: `tiny`, `base`, `small`, `medium`, `large`
+- Automatic caching: Transcripts reused across runs
 - Saves transcripts for future reference
+
+### AI-Powered Transcript Preprocessing ✨ NEW
+- **Smart Cleaning**: Fixes mangled names and technical terms
+- **Context-Aware**: Uses AI to understand and correct transcription errors
+- **Formatting**: Adds punctuation, paragraphs, and proper capitalization
+- **Cost-Effective**: Uses Claude Haiku 4.5 for efficient processing
+- **Detailed Tracking**: Full token and cost breakdown
+- **Configurable**: Enable/disable via `config.json`
+
+**Example Improvements:**
+```
+Before: "hey you two I'm the one lightfoot today we're talking about ccna"
+After:  "Hey YouTube, I'm Du'An Lightfoot. Today we're talking about CCNA."
+```
 
 ### AI-Powered Content Generation
 
@@ -352,6 +393,57 @@ The pipeline uses specialized AI sub-agents for each platform, ensuring:
 - Consistent messaging across platforms
 - Authentic, human-sounding content
 - SEO and engagement optimization
+
+### Session Management & Conversation History ✨ NEW
+- **Persistent Sessions**: Each agent maintains its own conversation history
+- **Unified Timestamps**: All agents share the same DATE_TIME for easy tracking
+- **Agent-Specific Storage**: Separate session directories for each agent
+- **Easy Debugging**: Inspect individual agent conversations and decisions
+- **Session Reuse**: Agents can reference previous interactions
+
+**Session Structure:**
+```
+sessions/
+├── session_orchestrator_20251113_143022/
+├── session_youtube_agent_20251113_143022/
+├── session_linkedin_agent_20251113_143022/
+├── session_twitter_agent_20251113_143022/
+├── session_rating_agent_20251113_143022/
+└── session_preprocessor_agent_20251113_143022/
+```
+
+### Cost Tracking & Transparency ✨ NEW
+- **Detailed Breakdowns**: Input/output tokens and costs for all agents
+- **Per-Agent Tracking**: See costs for orchestrator, content, rating, and preprocessing
+- **Model-Specific Pricing**: Accurate costs based on actual model pricing
+- **Total Pipeline Cost**: Complete cost summary in metadata
+
+**Example Metadata:**
+```json
+{
+  "preprocessing": {
+    "model": "claude-haiku-4-5-20251001",
+    "total_tokens": 25265,
+    "input_tokens": 12867,
+    "output_tokens": 12398,
+    "total_cost": 0.0749
+  },
+  "content_generation": {
+    "total_tokens": 98236,
+    "input_tokens": 79250,
+    "output_tokens": 18986,
+    "total_cost": 0.5225
+  },
+  "total_pipeline_cost": 0.5974
+}
+```
+
+### Externalized System Prompts ✨ NEW
+- **Prompts as Configuration**: All system prompts stored in `system_prompts/` directory
+- **Easy Editing**: Modify prompts without touching Python code
+- **Version Control Friendly**: Clean git diffs for prompt changes
+- **A/B Testing Ready**: Simple to test different prompt versions
+- **Collaborative**: Non-developers can improve prompts
 
 ### Content Rating & Feedback
 Built-in quality assurance with an expert rating agent:
@@ -527,54 +619,156 @@ rating_agent:
 
 **Note:** CLI options override config file settings.
 
+### Preprocessing Configuration
+
+Configure transcript preprocessing in `config.json`:
+
+```json
+{
+  "preprocessing": {
+    "enabled": true,
+    "channel_owner": "Your Name",
+    "custom_terms": {
+      "ccna": "CCNA",
+      "ccnp": "CCNP",
+      "aws": "AWS"
+    },
+    "max_retries": 5
+  }
+}
+```
+
+**Options:**
+- `enabled`: Turn preprocessing on/off
+- `channel_owner`: Your name (AI will fix mangled versions)
+- `custom_terms`: Technical terms to correct (lowercase → correct)
+- `max_retries`: Retry attempts for API errors
+
+**Benefits:**
+- Fixes "the one lightfoot" → "Du'An Lightfoot"
+- Corrects "ccna" → "CCNA"
+- Adds proper punctuation and paragraphs
+- ~$0.02-0.08 per video (using Claude Haiku 4.5)
+
 ## 📁 Project Structure
 
 ```
 content-copy-pipeline/
 ├── config/
-│   └── models.yaml            # Model configuration (providers, model IDs)
+│   ├── models.yaml              # Model configuration (providers, model IDs)
+│   ├── models_pricing.json      # Pricing data for cost calculations
+│   └── config.json              # Pipeline configuration (preprocessing, etc.)
 ├── src/
-│   ├── config_loader.py       # Configuration loader
-│   ├── pipeline.py            # Main pipeline orchestration
-│   ├── transcriber.py         # Local Whisper transcription
+│   ├── config_loader.py         # Configuration and model loader
+│   ├── pipeline.py              # Main pipeline orchestration
+│   ├── transcriber.py           # Local Whisper transcription
+│   ├── preprocessor.py          # AI-powered transcript cleaning
 │   ├── models/
-│   │   └── models.py          # Model factory functions
-│   └── tools/
-│       ├── content_generator.py  # YouTube, LinkedIn, Twitter agents
-│       └── content_rater.py      # Content rating agent
-├── videos/                    # Input videos (create this)
-├── output/                    # Generated content (auto-created)
-│   ├── *_content.txt          # Platform-specific content
-│   ├── *_metadata.json        # Processing metadata
-│   └── *_rating.txt           # Content quality ratings
-├── transcripts/               # Video transcripts (auto-created)
-├── sessions/                  # Agent conversation sessions (auto-created)
-├── run_pipeline.py            # CLI entry point
-├── requirements.txt           # Python dependencies
-└── .env                       # API keys (create from .env.example)
+│   │   └── models.py            # Model factory functions
+│   ├── tools/
+│   │   ├── content_generator.py # YouTube, LinkedIn, Twitter agents
+│   │   └── content_rater.py     # Content rating agent
+│   ├── utils/
+│   │   ├── pricing.py           # Cost calculation utilities
+│   │   └── prompt_loader.py     # System prompt loader
+│   └── hooks/
+│       └── hooks.py             # Logging and monitoring hooks
+├── system_prompts/              # All agent system prompts (externalized)
+│   ├── pipeline_orchestrator.txt
+│   ├── preprocessor_agent.txt
+│   ├── youtube_content_agent.txt
+│   ├── linkedin_content_agent.txt
+│   ├── twitter_content_agent.txt
+│   ├── rating_agent.txt
+│   └── README.md                # Prompt documentation
+├── videos/                      # Input videos (create this)
+├── output/                      # Generated content (auto-created)
+│   ├── *_content.txt            # Platform-specific content
+│   ├── *_metadata.json          # Processing metadata with costs
+│   └── *_rating.txt             # Content quality ratings
+├── transcripts/                 # Video transcripts (auto-created)
+│   ├── *_transcript.txt         # Raw transcripts
+│   └── *_transcript_cleaned.txt # AI-cleaned transcripts
+├── sessions/                    # Agent session history (auto-created)
+│   ├── session_orchestrator_{timestamp}/
+│   ├── session_youtube_agent_{timestamp}/
+│   ├── session_linkedin_agent_{timestamp}/
+│   ├── session_twitter_agent_{timestamp}/
+│   ├── session_rating_agent_{timestamp}/
+│   └── session_preprocessor_agent_{timestamp}/
+├── run_pipeline.py              # CLI entry point
+├── requirements.txt             # Python dependencies
+└── .env                         # API keys (create from .env.example)
 ```
 
 ## 📊 Output Files
 
 For each processed video, the pipeline creates:
 
-1. **Transcript File**: `transcripts/{video_name}_transcript.txt`
-   - Full text transcript of the video
+1. **Raw Transcript**: `transcripts/{video_name}_transcript.txt`
+   - Full text transcript from Whisper
+   - Unprocessed, straight from transcription
 
-2. **Content File**: `output/{video_name}_content.txt`
+2. **Cleaned Transcript** (if preprocessing enabled): `transcripts/{video_name}_transcript_cleaned.txt`
+   - AI-cleaned and formatted transcript
+   - Fixed names and technical terms
+   - Proper punctuation and paragraphs
+
+3. **Content File**: `output/{video_name}_content.txt`
    - All generated social media content
-   - YouTube metadata
+   - YouTube metadata (titles, description, tags, thumbnail)
    - LinkedIn post
    - Twitter thread
+   - Content metrics and ratings
 
-3. **Metadata File**: `output/{video_name}_metadata.json`
-   - Processing metadata
-   - Timestamps
-   - Parameters used
+4. **Metadata File**: `output/{video_name}_metadata.json`
+   - Complete processing details
+   - Token usage and costs per agent
+   - Preprocessing information
+   - Model configurations used
+   - Timestamps and parameters
 
-4. **Summary Report**: `output/pipeline_report_{timestamp}.txt`
+**Example Metadata Structure:**
+```json
+{
+  "video_file": "videos/tutorial.mp4",
+  "preprocessing": {
+    "enabled": true,
+    "model": "claude-haiku-4-5-20251001",
+    "total_tokens": 25265,
+    "input_tokens": 12867,
+    "output_tokens": 12398,
+    "total_cost": 0.0749
+  },
+  "content_generation": {
+    "total_tokens": 98236,
+    "input_tokens": 79250,
+    "output_tokens": 18986,
+    "total_cost": 0.5225,
+    "cost_breakdown": {
+      "content_agents": {
+        "model": "claude-sonnet-4-5-20250929",
+        "cost": 0.1608
+      },
+      "pipeline_agent": {
+        "model": "claude-sonnet-4-5-20250929",
+        "cost": 0.3617
+      }
+    }
+  },
+  "total_pipeline_cost": 0.5974
+}
+```
+
+5. **Rating File** (if rated): `output/{video_name}_rating.txt`
+   - Detailed content quality assessment
+   - Platform-specific ratings
+   - Improvement suggestions
+
+6. **Summary Report**: `output/pipeline_report_{timestamp}.txt`
    - Summary of all processed videos
    - Success/failure status
+   - Aggregate statistics
 
 ## 🎨 Example Output
 
